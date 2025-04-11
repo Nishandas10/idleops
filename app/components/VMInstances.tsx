@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { InstanceStatus } from '@/components/ui/instance-status';
 
 interface VMInstance {
   id: string;
@@ -111,13 +112,18 @@ export default function VMInstances() {
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-black">{instance.name}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-black">{instance.zone}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  <span className={`px-2 py-1 rounded-full text-xs ${
-                    instance.status === 'RUNNING' ? 'bg-green-100 text-green-800' :
-                    instance.status === 'STOPPED' ? 'bg-red-100 text-red-800' :
-                    'bg-yellow-100 text-yellow-800'
-                  }`}>
-                    {instance.status}
-                  </span>
+                  <div className="flex flex-col gap-2">
+                    <span className={`px-2 py-1 rounded-full text-xs ${
+                      instance.status === 'RUNNING' ? 'bg-green-100 text-green-800' :
+                      instance.status === 'STOPPED' ? 'bg-red-100 text-red-800' :
+                      'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {instance.status}
+                    </span>
+                    {instance.status === 'RUNNING' && (
+                      <InstanceStatus instanceId={instance.id} />
+                    )}
+                  </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-black">{instance.labels.env || 'N/A'}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
