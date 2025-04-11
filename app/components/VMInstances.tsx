@@ -121,7 +121,7 @@ export default function VMInstances() {
                       {instance.status}
                     </span>
                     {instance.status === 'RUNNING' && (
-                      <InstanceStatus instanceId={instance.id} />
+                      <InstanceStatus instanceId={instance.id} instanceName={instance.name} />
                     )}
                   </div>
                 </td>
