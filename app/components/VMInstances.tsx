@@ -279,6 +279,7 @@ export default function VMInstances() {
                         instanceName={instance.name}
                         zone={instance.zone}
                         onError={setError}
+                        autoHibernate={instance.autoHibernate}
                       />
                     )}
                   </div>

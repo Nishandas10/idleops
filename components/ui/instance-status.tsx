@@ -6,6 +6,7 @@ interface InstanceStatusProps {
     instanceName?: string;
     zone: string;
     onError?: (error: string) => void;
+    autoHibernate: boolean;
 }
 
 interface MetricData {
@@ -14,7 +15,7 @@ interface MetricData {
     isHealthy: boolean;
 }
 
-export function InstanceStatus({ instanceId, instanceName = instanceId, zone, onError }: InstanceStatusProps) {
+export function InstanceStatus({ instanceId, instanceName = instanceId, zone, onError, autoHibernate }: InstanceStatusProps) {
     const [metrics, setMetrics] = useState<MetricData[]>([]);
     const [loading, setLoading] = useState(true);
     const [lastNotificationTime, setLastNotificationTime] = useState<Date | null>(null);
@@ -81,7 +82,7 @@ export function InstanceStatus({ instanceId, instanceName = instanceId, zone, on
     }, [instanceId]);
 
     useEffect(() => {
-        if (!metrics.length) return;
+        if (!metrics.length || !autoHibernate) return;
 
         const latestMetric = metrics[metrics.length - 1];
         const isIdle = latestMetric.cpu < 50;
@@ -120,7 +121,7 @@ export function InstanceStatus({ instanceId, instanceName = instanceId, zone, on
                 setLastNotificationTime(currentTime);
             }
         }
-    }, [metrics, instanceId, instanceName, lastNotificationTime, zone, onError]);
+    }, [metrics, instanceId, instanceName, lastNotificationTime, zone, onError, autoHibernate]);
 
     if (loading || metrics.length === 0) {
         return (
