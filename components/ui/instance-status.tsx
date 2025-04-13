@@ -4,6 +4,8 @@ import { Badge } from "./badge";
 interface InstanceStatusProps {
     instanceId: string;
     instanceName?: string;
+    zone: string;
+    onError?: (error: string) => void;
 }
 
 interface MetricData {
@@ -12,10 +14,42 @@ interface MetricData {
     isHealthy: boolean;
 }
 
-export function InstanceStatus({ instanceId, instanceName = instanceId }: InstanceStatusProps) {
+export function InstanceStatus({ instanceId, instanceName = instanceId, zone, onError }: InstanceStatusProps) {
     const [metrics, setMetrics] = useState<MetricData[]>([]);
     const [loading, setLoading] = useState(true);
     const [lastNotificationTime, setLastNotificationTime] = useState<Date | null>(null);
+
+    const handleHibernate = async () => {
+        try {
+            const response = await fetch(`/api/instances/stop`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    instanceId,
+                    zone,
+                }),
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to stop instance');
+            }
+            
+            // Show success notification
+            if ("Notification" in window && Notification.permission === "granted") {
+                new Notification(`Instance ${instanceId} Hibernation`, {
+                    body: `Instance ${instanceName} is being stopped.`,
+                    icon: '/favicon.ico'
+                });
+            }
+        } catch (error) {
+            console.error('Error stopping instance:', error);
+            if (onError) {
+                onError('Failed to stop instance. Please try again.');
+            }
+        }
+    };
 
     useEffect(() => {
         // Request notification permission on component mount
@@ -69,14 +103,24 @@ export function InstanceStatus({ instanceId, instanceName = instanceId }: Instan
             (!lastNotificationTime || 
              (currentTime.getTime() - lastNotificationTime.getTime()) > 5 * 60 * 1000)) {
             if ("Notification" in window && Notification.permission === "granted") {
-                new Notification(`Instance ${instanceId} Idle Alert`, {
-                    body: `Instance ${instanceName} has been idle for ${idleMinutes} minutes. Consider stopping it.`,
-                    icon: '/favicon.ico' // Add your favicon path
+                const notification = new Notification(`Instance ${instanceId} Idle Alert`, {
+                    body: `Instance ${instanceName} has been idle for ${idleMinutes} minutes. Click to stop the instance.`,
+                    icon: '/favicon.ico',
+                    requireInteraction: true // Keep notification visible until user interacts
                 });
+
+                notification.onclick = (event) => {
+                    event.preventDefault();
+                    if (confirm(`Do you want to stop the idle instance ${instanceName}?`)) {
+                        handleHibernate();
+                    }
+                    notification.close();
+                };
+
                 setLastNotificationTime(currentTime);
             }
         }
-    }, [metrics, instanceId, instanceName, lastNotificationTime]);
+    }, [metrics, instanceId, instanceName, lastNotificationTime, zone, onError]);
 
     if (loading || metrics.length === 0) {
         return (
@@ -110,7 +154,7 @@ export function InstanceStatus({ instanceId, instanceName = instanceId }: Instan
                 </Badge>
                 <span className="text-sm text-muted-foreground">
                     {`CPU: ${latestMetric.cpu.toFixed(1)}%`}
-                    {isIdle && idleMinutes > 0}
+                    {isIdle && idleMinutes > 0 && ` (Idle for ${idleMinutes} min)`}
                 </span>
             </div>
             <div className="text-sm text-muted-foreground">

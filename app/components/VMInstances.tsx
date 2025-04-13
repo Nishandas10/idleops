@@ -274,7 +274,12 @@ export default function VMInstances() {
                       {instance.status}
                     </span>
                     {instance.status === 'RUNNING' && (
-                      <InstanceStatus instanceId={instance.id} instanceName={instance.name} />
+                      <InstanceStatus 
+                        instanceId={instance.id} 
+                        instanceName={instance.name}
+                        zone={instance.zone}
+                        onError={setError}
+                      />
                     )}
                   </div>
                 </td>
