@@ -319,12 +319,75 @@ export default function VMInstances() {
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  <button
-                    onClick={() => router.push(`/monitoring?instanceId=${instance.id}&instanceName=${encodeURIComponent(instance.name)}`)}
-                    className="text-blue-600 hover:text-blue-800"
-                  >
-                    View Metrics →
-                  </button>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => router.push(`/monitoring?instanceId=${instance.id}&instanceName=${encodeURIComponent(instance.name)}`)}
+                      className="text-blue-600 hover:text-blue-800"
+                    >
+                      View Metrics →
+                    </button>
+                    {instance.status === 'RUNNING' ? (
+                      <button
+                        onClick={async () => {
+                          try {
+                            const response = await fetch(`/api/instances/stop`, {
+                              method: 'POST',
+                              headers: {
+                                'Content-Type': 'application/json',
+                              },
+                              body: JSON.stringify({
+                                instanceId: instance.id,
+                                zone: instance.zone,
+                              }),
+                            });
+                            
+                            if (!response.ok) {
+                              throw new Error('Failed to stop instance');
+                            }
+                            
+                            // Refresh the instances list
+                            fetchInstances();
+                          } catch (error) {
+                            console.error('Error stopping instance:', error);
+                            setError('Failed to stop instance. Please try again.');
+                          }
+                        }}
+                        className="px-3 py-1 bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition-colors"
+                      >
+                        Stop
+                      </button>
+                    ) : instance.status === 'TERMINATED' ? (
+                      <button
+                        onClick={async () => {
+                          try {
+                            const response = await fetch(`/api/instances/start`, {
+                              method: 'POST',
+                              headers: {
+                                'Content-Type': 'application/json',
+                              },
+                              body: JSON.stringify({
+                                instanceId: instance.id,
+                                zone: instance.zone,
+                              }),
+                            });
+                            
+                            if (!response.ok) {
+                              throw new Error('Failed to start instance');
+                            }
+                            
+                            // Refresh the instances list
+                            fetchInstances();
+                          } catch (error) {
+                            console.error('Error starting instance:', error);
+                            setError('Failed to start instance. Please try again.');
+                          }
+                        }}
+                        className="px-3 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors"
+                      >
+                        Start
+                      </button>
+                    ) : null}
+                  </div>
                 </td>
               </tr>
             ))}

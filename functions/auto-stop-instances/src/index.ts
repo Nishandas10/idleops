@@ -2,14 +2,12 @@ import * as functions from "@google-cloud/functions-framework";
 import * as compute from "@google-cloud/compute";
 
 /**
- * Cloud Function to stop idle GCP instances
- * Only stops instances that:
- * 1. Have CPU usage below threshold for specified duration
- * 2. Don't have autoHibernate=off label
+ * Cloud Function to stop GCP instances
+ * Only stops instances that are in RUNNING state
  */
 export const stopIdleInstances: functions.HttpFunction = async (req, res) => {
   try {
-    console.log("Starting auto-stop of idle instances");
+    console.log("Starting auto-stop of instances");
 
     // Create Compute client
     const computeClient = new compute.v1.InstancesClient();
@@ -44,18 +42,6 @@ export const stopIdleInstances: functions.HttpFunction = async (req, res) => {
       for (const instance of instanceList) {
         if (!instance.name) continue;
 
-        // Check instance labels
-        const labels = instance.labels || {};
-
-        // Skip if autoHibernate is explicitly set to 'off'
-        if (labels.autoHibernate === "off") {
-          console.log(
-            `Skipping instance ${instance.name} due to autoHibernate=off label`
-          );
-          skippedCount++;
-          continue;
-        }
-
         // Check if instance is running
         if (instance.status !== "RUNNING") {
           console.log(
@@ -65,20 +51,10 @@ export const stopIdleInstances: functions.HttpFunction = async (req, res) => {
           continue;
         }
 
-        // Check if instance is marked as idle
-        const isIdle = labels.instanceState === "idle";
-        if (!isIdle) {
-          console.log(
-            `Skipping instance ${instance.name} as it's not marked as idle`
-          );
-          skippedCount++;
-          continue;
-        }
-
-        // Stop the instance since it's both idle and allowed to hibernate
+        // Stop the instance
         try {
           console.log(
-            `Stopping idle instance ${instance.name} in zone ${zone.name}`
+            `Stopping instance ${instance.name} in zone ${zone.name}`
           );
           await computeClient.stop({
             project: projectId,
@@ -103,7 +79,7 @@ export const stopIdleInstances: functions.HttpFunction = async (req, res) => {
     // Send HTTP response
     res.status(200).send({ success: true, message: summary });
   } catch (error) {
-    console.error("Error stopping idle instances:", error);
+    console.error("Error stopping instances:", error);
     res.status(500).send({ success: false, error: String(error) });
   }
 };
