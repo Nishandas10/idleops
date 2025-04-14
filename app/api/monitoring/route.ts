@@ -22,8 +22,10 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const instanceId = url.searchParams.get("instanceId");
 
-    // Get credentials from environment variable
-    const credentials = JSON.parse(process.env.GCP_SERVICE_ACCOUNT_KEY || "");
+    // Load service account credentials
+    const keyPath = path.join(process.cwd(), "service-account-key.json");
+    const keyContent = readFileSync(keyPath, "utf8");
+    const credentials = JSON.parse(keyContent);
 
     // Initialize Cloud Monitoring client with explicit options
     const client = new monitoring_v3.MetricServiceClient({
