@@ -4,45 +4,45 @@ import { NextResponse } from "next/server";
 const VM_PRICING: Record<string, { hourlyPrice: number; monthlyCost: number }> =
   {
     // General Purpose - E2 Series
-    "e2-micro": { hourlyPrice: 0.008, monthlyCost: 5.84 },
-    "e2-small": { hourlyPrice: 0.017, monthlyCost: 12.41 },
-    "e2-medium": { hourlyPrice: 0.034, monthlyCost: 24.82 },
-    "e2-standard-2": { hourlyPrice: 0.067, monthlyCost: 48.91 },
-    "e2-standard-4": { hourlyPrice: 0.134, monthlyCost: 97.82 },
-    "e2-standard-8": { hourlyPrice: 0.269, monthlyCost: 196.37 },
-    "e2-standard-16": { hourlyPrice: 0.538, monthlyCost: 392.74 },
-    "e2-standard-32": { hourlyPrice: 1.076, monthlyCost: 785.48 },
+    "e2-micro": { hourlyPrice: 0.006624, monthlyCost: 4.77 },
+    "e2-small": { hourlyPrice: 0.01325, monthlyCost: 9.54 },
+    "e2-medium": { hourlyPrice: 0.02649, monthlyCost: 19.08 },
+    "e2-standard-2": { hourlyPrice: 0.05298, monthlyCost: 38.15 },
+    "e2-standard-4": { hourlyPrice: 0.10596, monthlyCost: 76.31 },
+    "e2-standard-8": { hourlyPrice: 0.21192, monthlyCost: 152.61 },
+    "e2-standard-16": { hourlyPrice: 0.42384, monthlyCost: 305.21 },
+    "e2-standard-32": { hourlyPrice: 0.84768, monthlyCost: 610.42 },
 
     // General Purpose - N2 Series
-    "n2-standard-2": { hourlyPrice: 0.097, monthlyCost: 70.81 },
-    "n2-standard-4": { hourlyPrice: 0.194, monthlyCost: 141.62 },
-    "n2-standard-8": { hourlyPrice: 0.388, monthlyCost: 283.24 },
-    "n2-standard-16": { hourlyPrice: 0.776, monthlyCost: 566.48 },
-    "n2-standard-32": { hourlyPrice: 1.552, monthlyCost: 1132.96 },
+    "n2-standard-2": { hourlyPrice: 0.09767, monthlyCost: 70.32 },
+    "n2-standard-4": { hourlyPrice: 0.19534, monthlyCost: 140.64 },
+    "n2-standard-8": { hourlyPrice: 0.39068, monthlyCost: 281.28 },
+    "n2-standard-16": { hourlyPrice: 0.78136, monthlyCost: 562.57 },
+    "n2-standard-32": { hourlyPrice: 1.56272, monthlyCost: 1125.14 },
 
     // General Purpose - N1 Series
-    "n1-standard-1": { hourlyPrice: 0.048, monthlyCost: 35.04 },
-    "n1-standard-2": { hourlyPrice: 0.095, monthlyCost: 69.35 },
-    "n1-standard-4": { hourlyPrice: 0.19, monthlyCost: 138.7 },
-    "n1-standard-8": { hourlyPrice: 0.38, monthlyCost: 277.4 },
-    "n1-standard-16": { hourlyPrice: 0.76, monthlyCost: 554.8 },
-    "n1-standard-32": { hourlyPrice: 1.52, monthlyCost: 1109.6 },
+    "n1-standard-1": { hourlyPrice: 0.05, monthlyCost: 36.0 },
+    "n1-standard-2": { hourlyPrice: 0.1, monthlyCost: 72.0 },
+    "n1-standard-4": { hourlyPrice: 0.2, monthlyCost: 144.0 },
+    "n1-standard-8": { hourlyPrice: 0.4, monthlyCost: 288.0 },
+    "n1-standard-16": { hourlyPrice: 0.8, monthlyCost: 576.0 },
+    "n1-standard-32": { hourlyPrice: 1.6, monthlyCost: 1152.0 },
 
     // Memory Optimized - E2 Series
-    "e2-highmem-2": { hourlyPrice: 0.09, monthlyCost: 65.7 },
-    "e2-highmem-4": { hourlyPrice: 0.18, monthlyCost: 131.4 },
-    "e2-highmem-8": { hourlyPrice: 0.359, monthlyCost: 262.07 },
-    "e2-highmem-16": { hourlyPrice: 0.718, monthlyCost: 524.14 },
+    "e2-highmem-2": { hourlyPrice: 0.07106, monthlyCost: 51.16 },
+    "e2-highmem-4": { hourlyPrice: 0.14212, monthlyCost: 102.32 },
+    "e2-highmem-8": { hourlyPrice: 0.28424, monthlyCost: 204.65 },
+    "e2-highmem-16": { hourlyPrice: 0.56848, monthlyCost: 409.3 },
 
     // Compute Optimized - C2 Series
-    "c2-standard-4": { hourlyPrice: 0.209, monthlyCost: 152.57 },
-    "c2-standard-8": { hourlyPrice: 0.418, monthlyCost: 305.14 },
-    "c2-standard-16": { hourlyPrice: 0.836, monthlyCost: 610.28 },
-    "c2-standard-30": { hourlyPrice: 1.566, monthlyCost: 1143.18 },
-    "c2-standard-60": { hourlyPrice: 3.132, monthlyCost: 2286.36 },
+    "c2-standard-4": { hourlyPrice: 0.2088, monthlyCost: 150.34 },
+    "c2-standard-8": { hourlyPrice: 0.4176, monthlyCost: 300.67 },
+    "c2-standard-16": { hourlyPrice: 0.8352, monthlyCost: 601.34 },
+    "c2-standard-30": { hourlyPrice: 1.566, monthlyCost: 1127.52 },
+    "c2-standard-60": { hourlyPrice: 3.132, monthlyCost: 2255.04 },
 
     // Default pricing for unknown types
-    default: { hourlyPrice: 0.05, monthlyCost: 36.5 },
+    default: { hourlyPrice: 0.05, monthlyCost: 36.0 },
   };
 
 /**

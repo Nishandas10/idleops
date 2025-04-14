@@ -145,16 +145,6 @@ export default function CostSavingsPage() {
         </p>
       )}
 
-      {costData?.warning && (
-        <Alert className="mb-6 bg-yellow-50 border-yellow-200">
-          <ExclamationTriangleIcon className="h-5 w-5 text-yellow-600" />
-          <AlertTitle className="text-yellow-800">Warning</AlertTitle>
-          <AlertDescription className="text-yellow-700">
-            {costData.warning}
-          </AlertDescription>
-        </Alert>
-      )}
-
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <Card>
           <CardHeader className="pb-2">
@@ -217,7 +207,7 @@ export default function CostSavingsPage() {
           <AlertTitle className="text-amber-800">Savings Opportunity</AlertTitle>
           <AlertDescription className="text-amber-700">
             You could save {formatCurrency(costData.potentialSavings)} per month by enabling auto-hibernation 
-            on your idle instances. Check the instances table below.
+            on your idle instances.
           </AlertDescription>
         </Alert>
       )}
@@ -324,7 +314,7 @@ function InstancesTable({ instances, formatCurrency, formatDate }: InstancesTabl
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                 {instance.hoursIdle > 0 ? 
                   Math.round(instance.hoursIdle * 10) / 10 : 
-                  `${instance.idleHoursPerDay}/day (est.)`}
+                  '-'}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm">
                 <span className="text-green-600 font-medium">
