@@ -3,6 +3,19 @@ import { initializeApp, FirebaseApp } from "firebase/app";
 import { getAuth, Auth } from "firebase/auth";
 import { getFirestore, Firestore } from "firebase/firestore";
 import { updateVMStatus, VMStatus } from "@/lib/firebase/vmStatus";
+import { getAuth as getAdminAuth } from "firebase-admin/auth";
+import { initializeApp as initializeAdminApp, cert } from "firebase-admin/app";
+
+// Initialize Firebase Admin
+const adminApp = initializeAdminApp({
+  credential: cert({
+    projectId: process.env.FIREBASE_PROJECT_ID,
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+    privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+  }),
+});
+
+const adminAuth = getAdminAuth();
 
 // Initialize Firebase
 const firebaseConfig = {
@@ -31,7 +44,29 @@ try {
 // POST handler - Update VM status from server-side code
 export async function POST(request: NextRequest) {
   try {
-    // This endpoint is intended for server-side code, but we can add auth later if needed
+    // Get authorization header
+    const authHeader = request.headers.get("authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return NextResponse.json(
+        { error: "Missing or invalid authorization header" },
+        { status: 401 }
+      );
+    }
+
+    // Extract the token
+    const token = authHeader.substring(7);
+
+    // Verify the token
+    let decodedToken;
+    try {
+      decodedToken = await adminAuth.verifyIdToken(token);
+    } catch (error) {
+      console.error("Error verifying token:", error);
+      return NextResponse.json(
+        { error: "Invalid authorization token" },
+        { status: 401 }
+      );
+    }
 
     // Get the status data from the request body
     const data = await request.json();
@@ -47,6 +82,7 @@ export async function POST(request: NextRequest) {
     // Create status object
     const vmStatus: VMStatus = {
       instanceId: data.instanceId,
+      userId: decodedToken.uid,
       instanceName: data.instanceName || data.instanceId,
       status: data.status,
       autoHibernate: data.autoHibernate ?? false,
