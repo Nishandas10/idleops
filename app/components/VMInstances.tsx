@@ -419,166 +419,168 @@ export default function VMInstances() {
         </select>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full bg-white border rounded-lg">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">Instance ID</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">Name</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">Zone</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">Status</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">Auto Hibernate</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">Environment</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200">
-            {filteredInstances.map((instance) => (
-              <tr 
-                key={instance.id} 
-                className="hover:bg-gray-50"
-              >
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-black">{instance.id}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-black">{instance.name}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-black">{instance.zone}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  <div className="flex flex-col gap-2">
-                    <span className={`px-2 py-1 rounded-full text-xs ${
-                      instance.status === 'RUNNING' ? 'bg-green-100 text-green-800' :
-                      instance.status === 'STOPPED' ? 'bg-red-100 text-red-800' :
-                      'bg-yellow-100 text-yellow-800'
-                    }`}>
-                      {instance.status}
-                    </span>
-                    {instance.status === 'RUNNING' && (
-                      <InstanceStatus 
-                        instanceId={instance.id} 
-                        instanceName={instance.name}
-                        zone={instance.zone}
-                        onError={setError}
-                        autoHibernate={instance.autoHibernate}
-                        vmStatus={instance.vmStatus}
-                        lastActiveTimestamp={instance.lastActive}
-                        cpuUsage={instance.cpuUsage}
-                      />
-                    )}
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  <div className="flex items-center">
-                    <button
-                      onClick={() => handleAutoHibernateToggle(instance.id)}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                        instance.autoHibernate ? 'bg-blue-600' : 'bg-gray-200'
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          instance.autoHibernate ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
-                    <span className="ml-2 text-sm text-gray-600">
-                      {instance.autoHibernate ? 'On' : 'Off'}
-                    </span>
-                  </div>
-                </td>
-                <td className="px-6 py-4 text-sm text-black">
-                  <div className="flex items-center gap-2">
-                    <span className={`px-2 py-1 rounded-full text-xs ${
-                      instance.labels.env === 'production' ? 'bg-red-100 text-red-800' :
-                      instance.labels.env === 'test' ? 'bg-yellow-100 text-yellow-800' :
-                      instance.labels.env === 'dev' ? 'bg-green-100 text-green-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {instance.labels.env || 'Not Set'}
-                    </span>
-                    <button
-                      onClick={() => {
-                        setSelectedInstance(instance);
-                        setIsLabelModalOpen(true);
-                      }}
-                      className="text-blue-600 hover:text-blue-800 text-xs"
-                    >
-                      Edit
-                    </button>
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => router.push(`/monitoring?instanceId=${instance.id}&instanceName=${encodeURIComponent(instance.name)}`)}
-                      className="text-blue-600 hover:text-blue-800"
-                    >
-                      View Metrics →
-                    </button>
-                    {instance.status === 'RUNNING' ? (
-                      <button
-                        onClick={async () => {
-                          try {
-                            const response = await fetch(`/api/instances/stop`, {
-                              method: 'POST',
-                              headers: {
-                                'Content-Type': 'application/json',
-                              },
-                              body: JSON.stringify({
-                                instanceId: instance.id,
-                                zone: instance.zone,
-                              }),
-                            });
-                            
-                            if (!response.ok) {
-                              throw new Error('Failed to stop instance');
-                            }
-                            
-                            // Refresh the instances list
-                            fetchInstances();
-                          } catch (error) {
-                            console.error('Error stopping instance:', error);
-                            setError('Failed to stop instance. Please try again.');
-                          }
-                        }}
-                        className="px-3 py-1 bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition-colors"
-                      >
-                        Stop
-                      </button>
-                    ) : instance.status === 'TERMINATED' ? (
-                      <button
-                        onClick={async () => {
-                          try {
-                            const response = await fetch(`/api/instances/start`, {
-                              method: 'POST',
-                              headers: {
-                                'Content-Type': 'application/json',
-                              },
-                              body: JSON.stringify({
-                                instanceId: instance.id,
-                                zone: instance.zone,
-                              }),
-                            });
-                            
-                            if (!response.ok) {
-                              throw new Error('Failed to start instance');
-                            }
-                            
-                            // Refresh the instances list
-                            fetchInstances();
-                          } catch (error) {
-                            console.error('Error starting instance:', error);
-                            setError('Failed to start instance. Please try again.');
-                          }
-                        }}
-                        className="px-3 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors"
-                      >
-                        Start
-                      </button>
-                    ) : null}
-                  </div>
-                </td>
+      <div className="w-full">
+        <div className="max-w-full">
+          <table className="w-full table-auto bg-white border rounded-lg">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-3 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">ID</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">Name</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">Zone</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">Status</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">Auto Hibernate</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">Environment</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-black uppercase tracking-wider">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {filteredInstances.map((instance) => (
+                <tr 
+                  key={instance.id} 
+                  className="hover:bg-gray-50"
+                >
+                  <td className="px-3 py-4 whitespace-nowrap text-sm text-black max-w-[100px] truncate">{instance.id}</td>
+                  <td className="px-3 py-4 whitespace-nowrap text-sm text-black max-w-[120px] truncate">{instance.name}</td>
+                  <td className="px-3 py-4 whitespace-nowrap text-sm text-black max-w-[100px] truncate">{instance.zone}</td>
+                  <td className="px-3 py-4 whitespace-nowrap text-sm">
+                    <div className="flex flex-col gap-2">
+                      <span className={`px-2 py-1 rounded-full text-xs ${
+                        instance.status === 'RUNNING' ? 'bg-green-100 text-green-800' :
+                        instance.status === 'STOPPED' ? 'bg-red-100 text-red-800' :
+                        'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {instance.status}
+                      </span>
+                      {instance.status === 'RUNNING' && (
+                        <InstanceStatus 
+                          instanceId={instance.id} 
+                          instanceName={instance.name}
+                          zone={instance.zone}
+                          onError={setError}
+                          autoHibernate={instance.autoHibernate}
+                          vmStatus={instance.vmStatus}
+                          lastActiveTimestamp={instance.lastActive}
+                          cpuUsage={instance.cpuUsage}
+                        />
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-3 py-4 whitespace-nowrap text-sm">
+                    <div className="flex items-center">
+                      <button
+                        onClick={() => handleAutoHibernateToggle(instance.id)}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                          instance.autoHibernate ? 'bg-blue-600' : 'bg-gray-200'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            instance.autoHibernate ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                      <span className="ml-2 text-sm text-gray-600">
+                        {instance.autoHibernate ? 'On' : 'Off'}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-3 py-4 text-sm text-black">
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-1 rounded-full text-xs ${
+                        instance.labels.env === 'production' ? 'bg-red-100 text-red-800' :
+                        instance.labels.env === 'test' ? 'bg-yellow-100 text-yellow-800' :
+                        instance.labels.env === 'dev' ? 'bg-green-100 text-green-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {instance.labels.env || 'Not Set'}
+                      </span>
+                      <button
+                        onClick={() => {
+                          setSelectedInstance(instance);
+                          setIsLabelModalOpen(true);
+                        }}
+                        className="text-blue-600 hover:text-blue-800 text-xs"
+                      >
+                        Edit
+                      </button>
+                    </div>
+                  </td>
+                  <td className="px-3 py-4 whitespace-nowrap text-sm">
+                    <div className="flex flex-col space-y-2">
+                      <button
+                        onClick={() => router.push(`/monitoring?instanceId=${instance.id}&instanceName=${encodeURIComponent(instance.name)}`)}
+                        className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-3 py-1.5 rounded transition-colors duration-200 text-left"
+                      >
+                        View Metrics →
+                      </button>
+                      {instance.status === 'RUNNING' ? (
+                        <button
+                          onClick={async () => {
+                            try {
+                              const response = await fetch(`/api/instances/stop`, {
+                                method: 'POST',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                  instanceId: instance.id,
+                                  zone: instance.zone,
+                                }),
+                              });
+                              
+                              if (!response.ok) {
+                                throw new Error('Failed to stop instance');
+                              }
+                              
+                              // Refresh the instances list
+                              fetchInstances();
+                            } catch (error) {
+                              console.error('Error stopping instance:', error);
+                              setError('Failed to stop instance. Please try again.');
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors duration-200 text-left"
+                        >
+                          Stop
+                        </button>
+                      ) : instance.status === 'TERMINATED' ? (
+                        <button
+                          onClick={async () => {
+                            try {
+                              const response = await fetch(`/api/instances/start`, {
+                                method: 'POST',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                  instanceId: instance.id,
+                                  zone: instance.zone,
+                                }),
+                              });
+                              
+                              if (!response.ok) {
+                                throw new Error('Failed to start instance');
+                              }
+                              
+                              // Refresh the instances list
+                              fetchInstances();
+                            } catch (error) {
+                              console.error('Error starting instance:', error);
+                              setError('Failed to start instance. Please try again.');
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors duration-200 text-left"
+                        >
+                          Start
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {selectedInstance && (
