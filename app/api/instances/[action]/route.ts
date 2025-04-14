@@ -1,5 +1,5 @@
 import { InstancesClient } from "@google-cloud/compute/build/src/v1";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { GoogleAuth } from "google-auth-library";
 import { readFileSync } from "fs";
 import path from "path";
@@ -9,11 +9,12 @@ interface VMActionRequest {
   zone: string;
 }
 
+// This is the correct signature for a dynamic route segment handler in Next.js App Router
 export async function POST(
-  request: Request,
-  context: { params: { action: string } }
+  request: NextRequest,
+  { params }: { params: { action: string } }
 ) {
-  const { action } = context.params;
+  const action = params.action;
 
   if (action !== "start" && action !== "stop") {
     return NextResponse.json(
@@ -23,7 +24,7 @@ export async function POST(
   }
 
   try {
-    const body: VMActionRequest = await request.json();
+    const body = (await request.json()) as VMActionRequest;
 
     if (!body.instanceId || !body.zone) {
       return NextResponse.json(
@@ -48,7 +49,7 @@ export async function POST(
 
     // Prepare the request based on the action
     const vmRequest = {
-      project: process.env.GCP_PROJECT_ID,
+      project: process.env.GCP_PROJECT_ID || credentials.project_id,
       zone: body.zone,
       instance: body.instanceId,
     };
@@ -76,7 +77,6 @@ export async function POST(
           err instanceof Error
             ? err.message
             : `Failed to ${action} VM instance`,
-        details: err,
       },
       { status: 500 }
     );
