@@ -61,13 +61,10 @@ export function InstanceStatus({
     const [lastNotificationTime, setLastNotificationTime] = useState<Date | null>(null);
     const [vmStatus, setVmStatus] = useState<VMStatus | null>(null);
     const [refreshInterval, setRefreshInterval] = useState<number>(10000); // Start with 10 seconds refresh
-    const [hibernating, setHibernating] = useState(false);
-    const [hibernationStatus, setHibernationStatus] = useState<string | null>(null);
 
     const handleHibernate = async () => {
         try {
-            // Use the new API endpoint
-            const response = await fetch(`/api/vm/stop`, {
+            const response = await fetch(`/api/instances/stop`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

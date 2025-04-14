@@ -333,7 +333,7 @@ export default function VMInstances() {
   // Add these functions to handle instance starting and stopping
   const handleHibernate = async (instanceId: string, zone: string) => {
     try {
-      const response = await fetch(`/api/vm/stop`, {
+      const response = await fetch(`/api/instances/stop`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -358,7 +358,7 @@ export default function VMInstances() {
 
   const handleStart = async (instanceId: string, zone: string) => {
     try {
-      const response = await fetch(`/api/vm/start`, {
+      const response = await fetch(`/api/instances/start`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -517,7 +517,7 @@ export default function VMInstances() {
                         <button
                           onClick={async () => {
                             try {
-                              const response = await fetch(`/api/vm/stop`, {
+                              const response = await fetch(`/api/instances/stop`, {
                                 method: 'POST',
                                 headers: {
                                   'Content-Type': 'application/json',
@@ -547,7 +547,7 @@ export default function VMInstances() {
                         <button
                           onClick={async () => {
                             try {
-                              const response = await fetch(`/api/vm/start`, {
+                              const response = await fetch(`/api/instances/start`, {
                                 method: 'POST',
                                 headers: {
                                   'Content-Type': 'application/json',

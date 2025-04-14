@@ -9,12 +9,11 @@ interface VMActionRequest {
   zone: string;
 }
 
-// This is the correct signature for a dynamic route segment handler in Next.js App Router
 export async function POST(
   request: NextRequest,
-  { params }: { params: { action: string } }
+  context: { params: { action: string } }
 ) {
-  const action = params.action;
+  const { action } = context.params;
 
   if (action !== "start" && action !== "stop") {
     return NextResponse.json(
@@ -24,7 +23,7 @@ export async function POST(
   }
 
   try {
-    const body = (await request.json()) as VMActionRequest;
+    const body: VMActionRequest = await request.json();
 
     if (!body.instanceId || !body.zone) {
       return NextResponse.json(
@@ -49,7 +48,7 @@ export async function POST(
 
     // Prepare the request based on the action
     const vmRequest = {
-      project: process.env.GCP_PROJECT_ID || credentials.project_id,
+      project: process.env.GCP_PROJECT_ID,
       zone: body.zone,
       instance: body.instanceId,
     };
@@ -77,6 +76,7 @@ export async function POST(
           err instanceof Error
             ? err.message
             : `Failed to ${action} VM instance`,
+        details: err,
       },
       { status: 500 }
     );
