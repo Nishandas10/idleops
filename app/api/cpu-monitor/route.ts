@@ -3,6 +3,19 @@ import { CPUMonitor } from "./cpuMonitor.server";
 import { initializeApp, FirebaseApp } from "firebase/app";
 import { getAuth, Auth } from "firebase/auth";
 import { getFirestore, Firestore } from "firebase/firestore";
+import { getAuth as getAdminAuth } from "firebase-admin/auth";
+import { initializeApp as initializeAdminApp, cert } from "firebase-admin/app";
+
+// Initialize Firebase Admin
+const adminApp = initializeAdminApp({
+  credential: cert({
+    projectId: process.env.FIREBASE_PROJECT_ID,
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+    privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+  }),
+});
+
+const adminAuth = getAdminAuth();
 
 // Keep track of monitors for each instance
 const monitors: Record<string, CPUMonitor> = {};
@@ -39,6 +52,30 @@ export async function GET(request: NextRequest) {
     const instanceName = searchParams.get("instanceName");
     const autoHibernateParam = searchParams.get("autoHibernate");
 
+    // Get authorization header
+    const authHeader = request.headers.get("authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return NextResponse.json(
+        { error: "Missing or invalid authorization header" },
+        { status: 401 }
+      );
+    }
+
+    // Extract the token
+    const token = authHeader.substring(7);
+
+    // Verify the token
+    let decodedToken;
+    try {
+      decodedToken = await adminAuth.verifyIdToken(token);
+    } catch (error) {
+      console.error("Error verifying token:", error);
+      return NextResponse.json(
+        { error: "Invalid authorization token" },
+        { status: 401 }
+      );
+    }
+
     // Convert autoHibernate param to boolean
     const autoHibernate = autoHibernateParam === "true";
 
@@ -53,6 +90,7 @@ export async function GET(request: NextRequest) {
     if (!monitors[instanceId]) {
       monitors[instanceId] = new CPUMonitor(
         instanceId,
+        decodedToken.uid, // Pass the user ID from the verified token
         instanceName || undefined,
         db,
         autoHibernate

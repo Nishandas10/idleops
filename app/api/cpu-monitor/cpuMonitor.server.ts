@@ -10,6 +10,7 @@ interface Instance {
   isIdle: boolean;
   currentCPUUsage: number;
   autoHibernate: boolean; // Add autoHibernate field
+  userId: string; // Add userId field
 }
 
 export class CPUMonitor {
@@ -25,12 +26,14 @@ export class CPUMonitor {
 
   constructor(
     instanceId: string,
+    userId: string, // Add userId parameter
     instanceName?: string,
     db?: Firestore,
     autoHibernate: boolean = false
   ) {
     this.instance = {
       id: instanceId,
+      userId, // Store userId
       name: instanceName,
       lastActive: new Date(),
       isIdle: false,
@@ -136,6 +139,7 @@ export class CPUMonitor {
     try {
       await updateVMStatus(this.db, {
         instanceId: this.instance.id,
+        userId: this.instance.userId, // Add userId
         instanceName: this.instance.name,
         status: this.instance.isIdle ? "idle" : "active",
         autoHibernate: this.instance.autoHibernate,
