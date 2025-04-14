@@ -1,11 +1,61 @@
 import * as functions from "@google-cloud/functions-framework";
 import { v1 } from "@google-cloud/compute";
 import { Firestore } from "@google-cloud/firestore";
+import { SecretManagerServiceClient } from "@google-cloud/secret-manager";
+import * as fs from "fs";
+import * as path from "path";
 
 // Initialize clients
 const computeClient = new v1.InstancesClient();
 const zonesClient = new v1.ZonesClient();
-const firestore = new Firestore();
+const secretManagerClient = new SecretManagerServiceClient();
+
+// Path for temporary service account key
+const keyFilePath = path.join(
+  "/tmp",
+  "idleops-85936-firebase-adminsdk-fbsvc-7b5ff2eda9.json"
+);
+
+let firestore: Firestore;
+
+// Function to initialize Firestore with service account
+async function initializeFirestore() {
+  try {
+    // Get the secret
+    const projectId = await computeClient.getProjectId();
+    const name = `projects/${projectId}/secrets/idleops-secret/versions/latest`;
+
+    console.log(`Accessing secret: ${name}`);
+    const [version] = await secretManagerClient.accessSecretVersion({ name });
+
+    if (!version.payload || !version.payload.data) {
+      throw new Error("Secret not found or has no data");
+    }
+
+    // Write the key to a temporary file
+    const keyFileContent = version.payload.data.toString();
+    fs.writeFileSync(keyFilePath, keyFileContent);
+    console.log("Service account key saved to temporary file");
+
+    // Parse the service account key to get the correct project ID
+    const serviceAccount = JSON.parse(keyFileContent);
+    const firebaseProjectId = serviceAccount.project_id;
+    console.log(
+      `Using Firebase project ID from service account: ${firebaseProjectId}`
+    );
+
+    // Initialize Firestore with the key file and correct project ID
+    firestore = new Firestore({
+      projectId: firebaseProjectId,
+      keyFilename: keyFilePath,
+    });
+
+    console.log("Firestore initialized with service account key");
+  } catch (error) {
+    console.error("Error initializing Firestore:", error);
+    throw error;
+  }
+}
 
 const IDLE_THRESHOLD_MINUTES = 5;
 
@@ -31,155 +81,182 @@ interface FirestoreTimestamp {
 async function processIdleVMs() {
   console.log("Starting to check for idle instances");
 
-  // Get project ID
-  const projectId = await computeClient.getProjectId();
+  try {
+    // Initialize Firestore with service account key
+    await initializeFirestore();
 
-  // Get all VM statuses from Firestore
-  const vmStatusesSnapshot = await firestore.collection("vm_status").get();
+    // Debug: List all collections
+    console.log("Listing all collections in Firestore:");
+    const collections = await firestore.listCollections();
+    collections.forEach((col) => console.log(`Collection found: ${col.id}`));
 
-  if (vmStatusesSnapshot.empty) {
-    console.log("No VM status records found in Firestore");
-    return "No VM status records found in Firestore";
-  }
+    // Get project ID
+    const projectId = await computeClient.getProjectId();
 
-  const vmStatuses: VMStatus[] = [];
-  vmStatusesSnapshot.forEach((doc: any) => {
-    const data = doc.data() as VMStatus;
-    // Convert Firestore timestamp to Date if needed
-    if (
-      data.lastActive &&
-      typeof data.lastActive !== "string" &&
-      typeof data.lastActive === "object" &&
-      "toDate" in data.lastActive
-    ) {
-      data.lastActive = (data.lastActive as FirestoreTimestamp).toDate();
+    // Get all VM statuses from Firestore
+    console.log("Attempting to access vm_status collection");
+    const vmStatusesSnapshot = await firestore.collection("vm_status").get();
+
+    if (vmStatusesSnapshot.empty) {
+      console.log("No VM status records found in Firestore");
+      return "No VM status records found in Firestore";
     }
-    vmStatuses.push(data);
-  });
 
-  console.log(`Found ${vmStatuses.length} VM status records`);
-
-  // Get all zones
-  const [zoneList] = await zonesClient.list({
-    project: projectId,
-  });
-  console.log(`Found ${zoneList.length} zones`);
-
-  let stoppedInstancesCount = 0;
-  const now = new Date();
-
-  // Process each zone
-  for (const zone of zoneList) {
-    if (!zone.name) continue;
-    const zoneName = zone.name;
-    console.log(`Processing zone: ${zoneName}`);
-
-    // Get instances in the zone
-    const [instanceList] = await computeClient.list({
-      project: projectId,
-      zone: zoneName,
+    const vmStatuses: VMStatus[] = [];
+    vmStatusesSnapshot.forEach((doc: any) => {
+      const data = doc.data() as VMStatus;
+      console.log(`Found document with ID: ${doc.id}`);
+      // Convert Firestore timestamp to Date if needed
+      if (
+        data.lastActive &&
+        typeof data.lastActive !== "string" &&
+        typeof data.lastActive === "object" &&
+        "toDate" in data.lastActive
+      ) {
+        data.lastActive = (data.lastActive as FirestoreTimestamp).toDate();
+      }
+      vmStatuses.push(data);
     });
 
-    if (instanceList && instanceList.length > 0) {
-      console.log(`Found ${instanceList.length} instances in zone ${zoneName}`);
+    console.log(`Found ${vmStatuses.length} VM status records`);
 
-      // Process each instance
-      for (const instance of instanceList) {
-        if (!instance.name || !instance.id) continue;
+    // Get all zones
+    const [zoneList] = await zonesClient.list({
+      project: projectId,
+    });
+    console.log(`Found ${zoneList.length} zones`);
 
-        const instanceId = instance.id;
-        const instanceName = instance.name;
+    let stoppedInstancesCount = 0;
+    const now = new Date();
 
-        // Only process instances that are running
-        if (instance.status === "RUNNING") {
-          console.log(`Instance ${instanceName} (${instanceId}) is running`);
+    // Process each zone
+    for (const zone of zoneList) {
+      if (!zone.name) continue;
+      const zoneName = zone.name;
+      console.log(`Processing zone: ${zoneName}`);
 
-          // Find the corresponding VM status from Firestore
-          const vmStatus = vmStatuses.find(
-            (vm) => vm.instanceId === instanceId
-          );
+      // Get instances in the zone
+      const [instanceList] = await computeClient.list({
+        project: projectId,
+        zone: zoneName,
+      });
 
-          if (vmStatus) {
-            // Check if autoHibernate is enabled
-            if (vmStatus.autoHibernate) {
-              // Check if VM is idle and has status "idle"
-              if (vmStatus.status === "idle") {
-                // Check if VM is idle for more than threshold minutes
-                const lastActive =
-                  typeof vmStatus.lastActive === "string"
-                    ? new Date(vmStatus.lastActive)
-                    : vmStatus.lastActive;
+      if (instanceList && instanceList.length > 0) {
+        console.log(
+          `Found ${instanceList.length} instances in zone ${zoneName}`
+        );
 
-                const idleTimeMinutes =
-                  (now.getTime() - lastActive.getTime()) / (60 * 1000);
+        // Process each instance
+        for (const instance of instanceList) {
+          if (!instance.name || !instance.id) continue;
 
-                console.log(
-                  `Instance ${instanceName} last active: ${lastActive}, idle for ${idleTimeMinutes.toFixed(
-                    2
-                  )} minutes`
-                );
+          const instanceId = instance.id;
+          const instanceName = instance.name;
 
-                if (idleTimeMinutes > IDLE_THRESHOLD_MINUTES) {
+          // Only process instances that are running
+          if (instance.status === "RUNNING") {
+            console.log(`Instance ${instanceName} (${instanceId}) is running`);
+
+            // Find the corresponding VM status from Firestore
+            const vmStatus = vmStatuses.find(
+              (vm) => vm.instanceId === instanceId
+            );
+
+            if (vmStatus) {
+              // Check if autoHibernate is enabled
+              if (vmStatus.autoHibernate) {
+                // Check if VM is idle and has status "idle"
+                if (vmStatus.status === "idle") {
+                  // Check if VM is idle for more than threshold minutes
+                  const lastActive =
+                    typeof vmStatus.lastActive === "string"
+                      ? new Date(vmStatus.lastActive)
+                      : vmStatus.lastActive;
+
+                  const idleTimeMinutes =
+                    (now.getTime() - lastActive.getTime()) / (60 * 1000);
+
                   console.log(
-                    `Stopping idle instance ${instanceName} in zone ${zoneName}`
+                    `Instance ${instanceName} last active: ${lastActive}, idle for ${idleTimeMinutes.toFixed(
+                      2
+                    )} minutes`
                   );
 
-                  try {
-                    // Stop the instance
-                    const stopRequest = {
-                      project: projectId,
-                      zone: zoneName,
-                      instance: instanceName,
-                    };
-
-                    await computeClient.stop(stopRequest);
-
+                  if (idleTimeMinutes > IDLE_THRESHOLD_MINUTES) {
                     console.log(
-                      `Successfully initiated stop for instance ${instanceName}`
+                      `Stopping idle instance ${instanceName} in zone ${zoneName}`
                     );
-                    stoppedInstancesCount++;
-                  } catch (error) {
-                    console.error(
-                      `Error stopping instance ${instanceName}:`,
-                      error
+
+                    try {
+                      // Stop the instance
+                      const stopRequest = {
+                        project: projectId,
+                        zone: zoneName,
+                        instance: instanceName,
+                      };
+
+                      await computeClient.stop(stopRequest);
+
+                      console.log(
+                        `Successfully initiated stop for instance ${instanceName}`
+                      );
+                      stoppedInstancesCount++;
+                    } catch (error) {
+                      console.error(
+                        `Error stopping instance ${instanceName}:`,
+                        error
+                      );
+                    }
+                  } else {
+                    console.log(
+                      `Instance ${instanceName} is not idle enough (${idleTimeMinutes.toFixed(
+                        2
+                      )} minutes)`
                     );
                   }
                 } else {
                   console.log(
-                    `Instance ${instanceName} is not idle enough (${idleTimeMinutes.toFixed(
-                      2
-                    )} minutes)`
+                    `Instance ${instanceName} is not in idle status (current: ${vmStatus.status})`
                   );
                 }
               } else {
                 console.log(
-                  `Instance ${instanceName} is not in idle status (current: ${vmStatus.status})`
+                  `Auto-hibernate is disabled for instance ${instanceName}`
                 );
               }
             } else {
               console.log(
-                `Auto-hibernate is disabled for instance ${instanceName}`
+                `No status information found for instance ${instanceName}`
               );
             }
           } else {
             console.log(
-              `No status information found for instance ${instanceName}`
+              `Instance ${instanceName} is not running (status: ${instance.status})`
             );
           }
-        } else {
-          console.log(
-            `Instance ${instanceName} is not running (status: ${instance.status})`
-          );
         }
+      } else {
+        console.log(`No instances found in zone ${zoneName}`);
       }
-    } else {
-      console.log(`No instances found in zone ${zoneName}`);
+    }
+
+    const message = `Processed VM instances. Stopped ${stoppedInstancesCount} idle instances.`;
+    console.log(message);
+    return message;
+  } catch (error) {
+    console.error("Error in processIdleVMs:", error);
+    throw error;
+  } finally {
+    // Cleanup the temporary key file
+    if (fs.existsSync(keyFilePath)) {
+      try {
+        fs.unlinkSync(keyFilePath);
+        console.log("Temporary key file removed");
+      } catch (error) {
+        console.error("Error removing temporary key file:", error);
+      }
     }
   }
-
-  const message = `Processed VM instances. Stopped ${stoppedInstancesCount} idle instances.`;
-  console.log(message);
-  return message;
 }
 
 /**
