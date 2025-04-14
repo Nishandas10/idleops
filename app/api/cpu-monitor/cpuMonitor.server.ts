@@ -1,10 +1,15 @@
 import * as os from "os";
+// Import Firestore functionality
+import { Firestore } from "firebase/firestore";
+import { updateVMStatus } from "@/lib/firebase/vmStatus";
 
 interface Instance {
   id: string;
+  name?: string; // Add name field
   lastActive: Date;
   isIdle: boolean;
-  currentCPUUsage: number; // Add current CPU usage to track
+  currentCPUUsage: number;
+  autoHibernate: boolean; // Add autoHibernate field
 }
 
 export class CPUMonitor {
@@ -16,14 +21,27 @@ export class CPUMonitor {
   private cpuReadings: number[] = [];
   private monitoringInterval: NodeJS.Timeout | null = null;
   private lastCPUUsage: number = 0;
+  private db: Firestore | null = null; // Add Firestore db reference
 
-  constructor(instanceId: string) {
+  constructor(
+    instanceId: string,
+    instanceName?: string,
+    db?: Firestore,
+    autoHibernate: boolean = false
+  ) {
     this.instance = {
       id: instanceId,
+      name: instanceName,
       lastActive: new Date(),
       isIdle: false,
       currentCPUUsage: 0,
+      autoHibernate: autoHibernate,
     };
+
+    // Store Firestore instance if provided
+    if (db) {
+      this.db = db;
+    }
   }
 
   private getCPUUsage(): number {
@@ -71,12 +89,23 @@ export class CPUMonitor {
       // Check if current usage is above threshold for active state
       const isCurrentlyActive = currentUsage >= CPUMonitor.CPU_THRESHOLD;
 
+      // Track previous state to detect changes
+      const wasIdle = this.instance.isIdle;
+
       if (isUnderThreshold && !this.instance.isIdle) {
         this.markAsIdle();
       } else if (isCurrentlyActive && this.instance.isIdle) {
         // Clear the readings when transitioning to active state
         this.cpuReadings = [];
         this.markAsActive();
+      }
+
+      // If state changed or it's a new idle state, update Firestore
+      if (
+        this.db &&
+        (wasIdle !== this.instance.isIdle || this.instance.isIdle)
+      ) {
+        this.updateFirestore();
       }
     }, CPUMonitor.SAMPLING_INTERVAL);
   }
@@ -91,11 +120,43 @@ export class CPUMonitor {
   private markAsIdle(): void {
     this.instance.isIdle = true;
     this.instance.lastActive = new Date();
+    console.log(`Instance ${this.instance.id} is now idle`);
   }
 
   private markAsActive(): void {
     this.instance.isIdle = false;
     this.instance.lastActive = new Date();
+    console.log(`Instance ${this.instance.id} is now active`);
+  }
+
+  // New method to update VM status in Firestore
+  private async updateFirestore(): Promise<void> {
+    if (!this.db) return;
+
+    try {
+      await updateVMStatus(this.db, {
+        instanceId: this.instance.id,
+        instanceName: this.instance.name,
+        status: this.instance.isIdle ? "idle" : "active",
+        autoHibernate: this.instance.autoHibernate,
+        lastActive: this.instance.lastActive,
+        lastUpdated: new Date(),
+        cpuUsage: this.instance.currentCPUUsage,
+      });
+    } catch (error) {
+      console.error("Failed to update VM status in Firestore:", error);
+    }
+  }
+
+  // Update auto-hibernate setting
+  public setAutoHibernate(autoHibernate: boolean): void {
+    const previousValue = this.instance.autoHibernate;
+    this.instance.autoHibernate = autoHibernate;
+
+    // Update Firestore if value changed and db is available
+    if (this.db && previousValue !== autoHibernate) {
+      this.updateFirestore();
+    }
   }
 
   public getInstanceState(): Instance {

@@ -3,6 +3,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { InstanceStatus } from '@/components/ui/instance-status';
+// Import Firebase and Firestore functionality
+import { initializeApp, FirebaseApp } from 'firebase/app';
+import { getFirestore, onSnapshot, collection, query, doc, updateDoc, Firestore } from 'firebase/firestore';
+import { getAuth, onAuthStateChanged, Auth, User } from 'firebase/auth';
+import { listenToAllVMStatusChanges, VMStatus, updateVMStatus } from '@/lib/firebase/vmStatus';
 
 interface VMInstance {
   id: string;
@@ -11,6 +16,9 @@ interface VMInstance {
   status: string;
   labels: Record<string, string>;
   autoHibernate: boolean;
+  vmStatus?: 'active' | 'idle'; // Add VM status field
+  lastActive?: string;
+  cpuUsage?: number;
 }
 
 type Environment = 'dev' | 'test' | 'production' | '';
@@ -76,6 +84,30 @@ function LabelModal({ instance, isOpen, onClose, onSave }: LabelModalProps) {
   );
 }
 
+// Firebase configuration
+const firebaseConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+};
+
+// Initialize Firebase
+let app: FirebaseApp;
+let db: Firestore;
+let auth: Auth;
+
+try {
+  app = initializeApp(firebaseConfig);
+  db = getFirestore(app);
+  auth = getAuth(app);
+} catch (error) {
+  console.error("Firebase initialization error:", error);
+}
+
 export default function VMInstances() {
   const router = useRouter();
   const [instances, setInstances] = useState<VMInstance[]>([]);
@@ -85,29 +117,73 @@ export default function VMInstances() {
   const [filter, setFilter] = useState({ env: 'all' });
   const [selectedInstance, setSelectedInstance] = useState<VMInstance | null>(null);
   const [isLabelModalOpen, setIsLabelModalOpen] = useState(false);
+  const [vmStatuses, setVmStatuses] = useState<Record<string, VMStatus>>({});
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+  // Listen for auth state changes
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+    });
+    
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
-    // Load saved environments and autoHibernate settings from localStorage
-    const loadSavedSettings = () => {
+    // Set up listener for VM status changes
+    if (db) {
+      const unsubscribe = listenToAllVMStatusChanges(db, (statuses) => {
+        // Convert array of statuses to a record for easier lookup
+        const statusMap: Record<string, VMStatus> = {};
+        statuses.forEach(status => {
+          statusMap[status.instanceId] = status;
+        });
+        setVmStatuses(statusMap);
+        
+        // Update instances with the latest VM status information
+        setInstances(prevInstances => 
+          prevInstances.map(instance => {
+            const vmStatus = statusMap[instance.id];
+            if (vmStatus) {
+              return {
+                ...instance,
+                vmStatus: vmStatus.status,
+                lastActive: typeof vmStatus.lastActive === 'string' 
+                  ? vmStatus.lastActive 
+                  : vmStatus.lastActive instanceof Date 
+                    ? vmStatus.lastActive.toISOString() 
+                    : undefined,
+                cpuUsage: vmStatus.cpuUsage,
+                // Update autoHibernate from Firestore
+                autoHibernate: vmStatus.autoHibernate
+              };
+            }
+            return instance;
+          })
+        );
+      });
+      
+      return () => unsubscribe();
+    }
+  }, [db]);
+
+  useEffect(() => {
+    // Load saved environments from localStorage
+    const loadSavedEnvironments = () => {
       const savedEnvs = localStorage.getItem('instanceEnvironments');
-      const savedHibernate = localStorage.getItem('instanceAutoHibernate');
-      return {
-        environments: savedEnvs ? JSON.parse(savedEnvs) : {},
-        autoHibernate: savedHibernate ? JSON.parse(savedHibernate) : {}
-      };
+      return savedEnvs ? JSON.parse(savedEnvs) : {};
     };
 
-    const savedSettings = loadSavedSettings();
+    const savedEnvironments = loadSavedEnvironments();
     
-    // Update instances with saved settings
+    // Update instances with saved environments
     setInstances(prevInstances => 
       prevInstances.map(instance => ({
         ...instance,
         labels: {
           ...instance.labels,
-          env: savedSettings.environments[instance.id] || instance.labels.env || ''
-        },
-        autoHibernate: savedSettings.autoHibernate[instance.id] || false
+          env: savedEnvironments[instance.id] || instance.labels.env || ''
+        }
       }))
     );
   }, []);
@@ -121,21 +197,28 @@ export default function VMInstances() {
       }
       const data = await response.json();
       
-      // Load saved settings from localStorage
+      // Load saved environments from localStorage
       const savedEnvs = localStorage.getItem('instanceEnvironments');
-      const savedHibernate = localStorage.getItem('instanceAutoHibernate');
       const savedInstanceEnvs = savedEnvs ? JSON.parse(savedEnvs) : {};
-      const savedInstanceHibernate = savedHibernate ? JSON.parse(savedHibernate) : {};
       
-      // Merge saved settings with fetched instances
-      const instancesWithSettings = data.map((instance: VMInstance) => ({
-        ...instance,
-        labels: {
-          ...instance.labels,
-          env: savedInstanceEnvs[instance.id] || instance.labels.env || ''
-        },
-        autoHibernate: savedInstanceHibernate[instance.id] || false
-      }));
+      // Merge saved environments with fetched instances
+      const instancesWithSettings = data.map((instance: VMInstance) => {
+        // Get VM status from the statuses state
+        const vmStatus = vmStatuses[instance.id];
+        
+        return {
+          ...instance,
+          labels: {
+            ...instance.labels,
+            env: savedInstanceEnvs[instance.id] || instance.labels.env || ''
+          },
+          // Use autoHibernate from VM status if available
+          autoHibernate: vmStatus ? vmStatus.autoHibernate : false,
+          vmStatus: vmStatus ? vmStatus.status : undefined,
+          lastActive: vmStatus ? vmStatus.lastActive : undefined,
+          cpuUsage: vmStatus ? vmStatus.cpuUsage : undefined
+        };
+      });
       
       setInstances(instancesWithSettings);
       setLoading(false);
@@ -168,24 +251,63 @@ export default function VMInstances() {
     );
   };
 
-  const handleAutoHibernateToggle = (instanceId: string) => {
-    // Update localStorage
-    const savedHibernate = localStorage.getItem('instanceAutoHibernate');
-    const savedInstanceHibernate = savedHibernate ? JSON.parse(savedHibernate) : {};
-    savedInstanceHibernate[instanceId] = !savedInstanceHibernate[instanceId];
-    localStorage.setItem('instanceAutoHibernate', JSON.stringify(savedInstanceHibernate));
-
-    // Update instances state
+  const handleAutoHibernateToggle = async (instanceId: string) => {
+    // Find the instance
+    const instance = instances.find(i => i.id === instanceId);
+    if (!instance) return;
+    
+    // Toggle autoHibernate
+    const newAutoHibernate = !instance.autoHibernate;
+    
+    // Update instances state immediately for UI responsiveness
     setInstances(prevInstances =>
       prevInstances.map(instance =>
         instance.id === instanceId
           ? {
               ...instance,
-              autoHibernate: !instance.autoHibernate
+              autoHibernate: newAutoHibernate
             }
           : instance
       )
     );
+    
+    try {
+      // Update in Firestore
+      if (db && currentUser) {
+        // Use the VM status data if available, otherwise create a basic one
+        const vmStatus = vmStatuses[instanceId] || {
+          instanceId,
+          instanceName: instance.name,
+          status: 'active', // Default to active
+          autoHibernate: newAutoHibernate,
+          lastActive: new Date().toISOString(),
+          lastUpdated: new Date().toISOString()
+        };
+        
+        // Update with new autoHibernate value
+        await updateVMStatus(db, {
+          ...vmStatus,
+          autoHibernate: newAutoHibernate
+        });
+        
+        console.log(`Updated autoHibernate for ${instanceId} to ${newAutoHibernate}`);
+      }
+    } catch (err) {
+      console.error('Failed to update autoHibernate setting:', err);
+      setError('Failed to update autoHibernate setting');
+      
+      // Revert the change in state if Firestore update fails
+      setInstances(prevInstances =>
+        prevInstances.map(instance =>
+          instance.id === instanceId
+            ? {
+                ...instance,
+                autoHibernate: !newAutoHibernate
+              }
+            : instance
+        )
+      );
+    }
   };
 
   const filterInstances = useCallback(() => {
@@ -208,6 +330,70 @@ export default function VMInstances() {
     filterInstances();
   }, [filterInstances]);
 
+  // Add these functions to handle instance starting and stopping
+  const handleHibernate = async (instanceId: string, zone: string) => {
+    try {
+      const response = await fetch(`/api/instances/stop`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          instanceId,
+          zone,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to stop instance');
+      }
+      
+      // Refresh the instances list
+      fetchInstances();
+    } catch (error) {
+      console.error('Error stopping instance:', error);
+      setError('Failed to stop instance. Please try again.');
+    }
+  };
+
+  const handleStart = async (instanceId: string, zone: string) => {
+    try {
+      const response = await fetch(`/api/instances/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          instanceId,
+          zone,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to start instance');
+      }
+      
+      // Refresh the instances list
+      fetchInstances();
+    } catch (error) {
+      console.error('Error starting instance:', error);
+      setError('Failed to start instance. Please try again.');
+    }
+  };
+
+  // Add a refresh button handler
+  const handleRefresh = () => {
+    setLoading(true);
+    fetchInstances().then(() => {
+      // Success message could be added here
+      console.log("Data refreshed successfully");
+    }).catch(error => {
+      setError("Failed to refresh data. Please try again.");
+    }).finally(() => {
+      setLoading(false);
+    });
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -226,11 +412,20 @@ export default function VMInstances() {
 
   return (
     <div className="container mx-auto p-6">
-      <h1 className="text-3xl font-bold mb-6 text-black">GCP VM Instances</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-black">GCP VM Instances</h1>
+        <button
+          onClick={handleRefresh}
+          className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded"
+          disabled={loading}
+        >
+          {loading ? 'Refreshing...' : 'Refresh Data'}
+        </button>
+      </div>
       
       <div className="mb-6">
         <label className="mr-2 text-black font-medium">Filter by Environment:</label>
-        <select 
+        <select
           className="border rounded p-2 text-black bg-white"
           value={filter.env}
           onChange={(e) => setFilter({ env: e.target.value })}
@@ -280,6 +475,9 @@ export default function VMInstances() {
                         zone={instance.zone}
                         onError={setError}
                         autoHibernate={instance.autoHibernate}
+                        vmStatus={instance.vmStatus}
+                        lastActiveTimestamp={instance.lastActive}
+                        cpuUsage={instance.cpuUsage}
                       />
                     )}
                   </div>
