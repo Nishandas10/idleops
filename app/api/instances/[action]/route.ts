@@ -1,5 +1,5 @@
 import { InstancesClient } from "@google-cloud/compute/build/src/v1";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { GoogleAuth } from "google-auth-library";
 import { readFileSync } from "fs";
 import path from "path";
@@ -9,11 +9,14 @@ interface VMActionRequest {
   zone: string;
 }
 
-export async function POST(
-  request: Request,
-  { params }: { params: { action: string } }
-) {
-  const { action } = params;
+type RouteSegmentProps = {
+  params: {
+    action: string;
+  };
+};
+
+export async function POST(request: NextRequest, props: RouteSegmentProps) {
+  const { action } = props.params;
 
   if (action !== "start" && action !== "stop") {
     return NextResponse.json(
