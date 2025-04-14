@@ -42,4 +42,3 @@ next-env.d.ts
 
 # Ignore service account key file
 service-account-key.json
-/functions
