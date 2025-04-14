@@ -3,19 +3,47 @@ import { CPUMonitor } from "./cpuMonitor.server";
 import { initializeApp, FirebaseApp } from "firebase/app";
 import { getAuth, Auth } from "firebase/auth";
 import { getFirestore, Firestore } from "firebase/firestore";
-import { getAuth as getAdminAuth } from "firebase-admin/auth";
-import { initializeApp as initializeAdminApp, cert } from "firebase-admin/app";
+import {
+  getAuth as getAdminAuth,
+  Auth as AdminAuth,
+} from "firebase-admin/auth";
+import {
+  initializeApp as initializeAdminApp,
+  cert,
+  getApps,
+  App,
+} from "firebase-admin/app";
 
-// Initialize Firebase Admin
-const adminApp = initializeAdminApp({
-  credential: cert({
-    projectId: process.env.FIREBASE_PROJECT_ID,
-    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-  }),
-});
+// Initialize Firebase Admin only if it hasn't been initialized
+let adminApp: App;
+let adminAuth: AdminAuth;
 
-const adminAuth = getAdminAuth();
+try {
+  // Check if Firebase Admin is already initialized
+  if (getApps().length === 0) {
+    if (
+      !process.env.FIREBASE_PROJECT_ID ||
+      !process.env.FIREBASE_CLIENT_EMAIL ||
+      !process.env.FIREBASE_PRIVATE_KEY
+    ) {
+      throw new Error("Firebase Admin environment variables are missing");
+    }
+
+    adminApp = initializeAdminApp({
+      credential: cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+      }),
+    });
+  } else {
+    adminApp = getApps()[0];
+  }
+  adminAuth = getAdminAuth(adminApp);
+} catch (error) {
+  console.error("Firebase Admin initialization error:", error);
+  // Don't throw here, let the route handlers handle the error
+}
 
 // Keep track of monitors for each instance
 const monitors: Record<string, CPUMonitor> = {};
@@ -46,6 +74,14 @@ try {
 
 export async function GET(request: NextRequest) {
   try {
+    // Check if Firebase Admin is properly initialized
+    if (!adminAuth) {
+      return NextResponse.json(
+        { error: "Firebase Admin is not properly initialized" },
+        { status: 500 }
+      );
+    }
+
     // Extract instance ID from query parameters
     const { searchParams } = new URL(request.url);
     const instanceId = searchParams.get("instanceId");
@@ -90,7 +126,7 @@ export async function GET(request: NextRequest) {
     if (!monitors[instanceId]) {
       monitors[instanceId] = new CPUMonitor(
         instanceId,
-        decodedToken.uid, // Pass the user ID from the verified token
+        decodedToken.uid,
         instanceName || undefined,
         db,
         autoHibernate
