@@ -9,11 +9,13 @@ interface VMActionRequest {
   zone: string;
 }
 
-// In Next.js 15, the dynamic route parameter can be destructured directly from the second argument.
+// Fixed: Properly type params as a Promise and await it
 export async function POST(
   req: NextRequest,
-  { params: { action } }: { params: { action: string } }
+  { params }: { params: Promise<{ action: string }> }
 ): Promise<NextResponse> {
+  const { action } = await params;
+
   if (action !== "start" && action !== "stop") {
     return NextResponse.json(
       { error: "Invalid action. Must be 'start' or 'stop'" },
@@ -22,7 +24,7 @@ export async function POST(
   }
 
   try {
-    // Parse the JSON body with basic type validation
+    // Rest of your code remains the same
     const body = (await req.json()) as Partial<VMActionRequest>;
     const { instanceId, zone } = body;
     if (!instanceId || !zone) {
