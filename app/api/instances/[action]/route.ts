@@ -9,11 +9,14 @@ interface VMActionRequest {
   zone: string;
 }
 
-export async function POST(
-  request: NextRequest,
-  context: { params: { action: string } }
-) {
-  const { action } = context.params;
+type RouteSegment = {
+  params: {
+    action: string;
+  };
+};
+
+export async function POST(request: NextRequest, { params }: RouteSegment) {
+  const { action } = params;
 
   if (action !== "start" && action !== "stop") {
     return NextResponse.json(
