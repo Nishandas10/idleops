@@ -132,7 +132,7 @@ export default function VMInstances() {
   useEffect(() => {
     // Set up listener for VM status changes
     if (db && currentUser) {
-      const unsubscribe = listenToAllVMStatusChanges(db, currentUser.uid, (statuses) => {
+      const unsubscribe = listenToAllVMStatusChanges(db, (statuses) => {
         // Convert array of statuses to a record for easier lookup
         const statusMap: Record<string, VMStatus> = {};
         statuses.forEach(status => {
@@ -161,7 +161,7 @@ export default function VMInstances() {
             return instance;
           })
         );
-      });
+      }, currentUser.uid); // Pass the current user's UID
       
       return () => unsubscribe();
     }
@@ -281,15 +281,15 @@ export default function VMInstances() {
           status: 'active', // Default to active
           autoHibernate: newAutoHibernate,
           lastActive: new Date().toISOString(),
-          lastUpdated: new Date().toISOString()
+          lastUpdated: new Date().toISOString(),
+          uid: currentUser.uid // Add the user's UID
         };
         
-        // Update with new autoHibernate value and add userId
+        // Update with new autoHibernate value
         await updateVMStatus(db, {
           ...vmStatus,
-          userId: currentUser.uid,
           autoHibernate: newAutoHibernate
-        });
+        }, currentUser.uid); // Pass the current user's UID
         
         console.log(`Updated autoHibernate for ${instanceId} to ${newAutoHibernate}`);
       }

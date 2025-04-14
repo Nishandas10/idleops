@@ -93,11 +93,9 @@ async function processIdleVMs() {
     // Get project ID
     const projectId = await computeClient.getProjectId();
 
-    // Get all VM statuses from Firestore using collectionGroup
-    console.log("Attempting to access instances collection group");
-    const vmStatusesSnapshot = await firestore
-      .collectionGroup("instances")
-      .get();
+    // Get all VM statuses from Firestore
+    console.log("Attempting to access vm_status collection");
+    const vmStatusesSnapshot = await firestore.collection("vm_status").get();
 
     if (vmStatusesSnapshot.empty) {
       console.log("No VM status records found in Firestore");
@@ -107,7 +105,7 @@ async function processIdleVMs() {
     const vmStatuses: VMStatus[] = [];
     vmStatusesSnapshot.forEach((doc: any) => {
       const data = doc.data() as VMStatus;
-      console.log(`Found document with ID: ${doc.id} in path: ${doc.ref.path}`);
+      console.log(`Found document with ID: ${doc.id}`);
       // Convert Firestore timestamp to Date if needed
       if (
         data.lastActive &&

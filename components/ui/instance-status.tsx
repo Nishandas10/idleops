@@ -2,9 +2,8 @@ import { useEffect, useState } from "react";
 import { Badge } from "./badge";
 import { initializeApp, FirebaseApp } from 'firebase/app';
 import { getFirestore, Firestore } from 'firebase/firestore';
-import { getAuth, Auth } from 'firebase/auth';
+import { getAuth, Auth, onAuthStateChanged, User } from 'firebase/auth';
 import { listenToVMStatusChanges, VMStatus, updateVMStatus } from "@/lib/firebase/vmStatus";
-import { onAuthStateChanged } from 'firebase/auth';
 
 interface InstanceStatusProps {
     instanceId: string;
@@ -61,8 +60,8 @@ export function InstanceStatus({
     const [loading, setLoading] = useState(true);
     const [lastNotificationTime, setLastNotificationTime] = useState<Date | null>(null);
     const [vmStatus, setVmStatus] = useState<VMStatus | null>(null);
-    const [refreshInterval, setRefreshInterval] = useState<number>(10000);
-    const [currentUser, setCurrentUser] = useState<any>(null);
+    const [refreshInterval, setRefreshInterval] = useState<number>(10000); // Start with 10 seconds refresh
+    const [currentUser, setCurrentUser] = useState<User | null>(null);
 
     // Listen for auth state changes
     useEffect(() => {
@@ -72,22 +71,6 @@ export function InstanceStatus({
         
         return () => unsubscribe();
     }, []);
-
-    useEffect(() => {
-        if (!db || !currentUser) return;
-
-        // Set up listener for VM status changes
-        const unsubscribe = listenToVMStatusChanges(
-            db,
-            currentUser.uid,
-            instanceId,
-            (status) => {
-                setVmStatus(status);
-            }
-        );
-
-        return () => unsubscribe();
-    }, [db, instanceId, currentUser]);
 
     const handleHibernate = async () => {
         try {
@@ -132,7 +115,9 @@ export function InstanceStatus({
     useEffect(() => {
         async function fetchMetrics() {
             try {
-                const response = await fetch(`/api/monitoring?instanceId=${instanceId}`);
+                // Add uid to query params if user is authenticated
+                const uidParam = currentUser ? `&uid=${currentUser.uid}` : '';
+                const response = await fetch(`/api/monitoring?instanceId=${instanceId}${uidParam}`);
                 if (!response.ok) {
                     throw new Error('Failed to fetch metrics');
                 }
@@ -142,7 +127,7 @@ export function InstanceStatus({
                     setMetrics(data.metrics);
                     
                     // Update Firestore with latest metrics data if available
-                    if (db && data.metrics.length > 0) {
+                    if (db && data.metrics.length > 0 && currentUser) {
                         const latestMetric = data.metrics[data.metrics.length - 1];
                         const isIdle = latestMetric.cpu < 50;
                         
@@ -160,8 +145,9 @@ export function InstanceStatus({
                                 status: isIdle ? 'idle' : 'active',
                                 lastActive: new Date(timestamp),
                                 cpuUsage: latestMetric.cpu,
-                                lastUpdated: new Date()
-                            });
+                                lastUpdated: new Date(),
+                                uid: currentUser.uid // Add user UID to the data
+                            }, currentUser.uid); // Pass the user UID
                         }
                         
                         // Adjust refresh interval based on activity
@@ -185,7 +171,20 @@ export function InstanceStatus({
         // Dynamic refresh interval
         const interval = setInterval(fetchMetrics, refreshInterval);
         return () => clearInterval(interval);
-    }, [instanceId, refreshInterval, db, vmStatus]);
+    }, [instanceId, refreshInterval, db, vmStatus, currentUser]);
+
+    // Listen for VM status changes from Firestore
+    useEffect(() => {
+        if (!db || !instanceId || !currentUser) return;
+        
+        const unsubscribe = listenToVMStatusChanges(db, instanceId, (status) => {
+            setVmStatus(status);
+            // If status data is loaded, we can end loading state
+            setLoading(false);
+        }, currentUser.uid); // Pass the user UID
+        
+        return () => unsubscribe();
+    }, [db, instanceId, currentUser]);
 
     useEffect(() => {
         // Skip if autoHibernate is off or we don't have status data
