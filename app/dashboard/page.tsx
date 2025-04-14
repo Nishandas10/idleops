@@ -4,8 +4,9 @@ import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { getFirestore, doc, getDoc, Firestore } from 'firebase/firestore';
-import { getAuth, onAuthStateChanged, Auth } from 'firebase/auth';
+import { getAuth, onAuthStateChanged, Auth, signOut } from 'firebase/auth';
 import { initializeApp, FirebaseApp } from 'firebase/app';
+import { useRouter } from 'next/navigation';
 
 // Import VMInstances component
 const VMInstances = dynamic(() => import('../components/VMInstances'), { ssr: false });
@@ -35,6 +36,7 @@ try {
 }
 
 export default function Dashboard() {
+  const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
@@ -43,6 +45,16 @@ export default function Dashboard() {
 
   const handleRefreshData = () => {
     setRefreshKey(prev => prev + 1); // Increment key to force re-render
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      router.push('/'); // Redirect to homepage after logout
+    } catch (error) {
+      console.error('Error signing out:', error);
+      setError('Failed to sign out');
+    }
   };
 
   useEffect(() => {
@@ -134,6 +146,15 @@ export default function Dashboard() {
           <Link href="/onboarding" className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
             Change Project
           </Link>
+          <button
+            onClick={handleLogout}
+            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            Logout
+          </button>
         </div>
       </div>
 
