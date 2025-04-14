@@ -4,6 +4,8 @@ import {
 } from "@google-cloud/compute/build/src/v1";
 import { NextResponse } from "next/server";
 import { GoogleAuth } from "google-auth-library";
+import { readFileSync } from "fs";
+import path from "path";
 
 interface VMInstance {
   id: string;
@@ -18,8 +20,10 @@ export async function GET() {
   console.log("Project ID:", process.env.GCP_PROJECT_ID);
 
   try {
-    // Get credentials from environment variable
-    const credentials = JSON.parse(process.env.GCP_SERVICE_ACCOUNT_KEY || "");
+    // Load and parse the service account key
+    const keyPath = path.join(process.cwd(), "service-account-key.json");
+    const keyContent = readFileSync(keyPath, "utf8");
+    const credentials = JSON.parse(keyContent);
 
     // Create auth client
     const auth = new GoogleAuth({

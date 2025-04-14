@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { InstancesClient } from "@google-cloud/compute/build/src/v1";
 import { GoogleAuth } from "google-auth-library";
+import { readFileSync } from "fs";
+import path from "path";
 import axios from "axios";
 import { getFirestore, DocumentData } from "firebase-admin/firestore";
 import { initializeApp, cert, getApps } from "firebase-admin/app";
@@ -56,9 +58,11 @@ interface CostSummary {
 // Initialize Firebase Admin (if not already initialized)
 if (!getApps().length) {
   try {
-    const serviceAccount = JSON.parse(
-      process.env.FIREBASE_SERVICE_ACCOUNT_KEY || ""
+    const keyPath = path.join(
+      process.cwd(),
+      "idleops-85936-firebase-adminsdk-fbsvc-7b5ff2eda9.json"
     );
+    const serviceAccount = JSON.parse(readFileSync(keyPath, "utf8"));
 
     initializeApp({
       credential: cert(serviceAccount),
@@ -73,8 +77,10 @@ const db = getFirestore();
 
 export async function GET() {
   try {
-    // Get credentials from environment variable
-    const credentials = JSON.parse(process.env.GCP_SERVICE_ACCOUNT_KEY || "");
+    // Load and parse the service account key
+    const keyPath = path.join(process.cwd(), "service-account-key.json");
+    const keyContent = readFileSync(keyPath, "utf8");
+    const credentials = JSON.parse(keyContent);
 
     // 1. Get GCP VM Instances
     const auth = new GoogleAuth({
