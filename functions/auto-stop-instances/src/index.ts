@@ -1,85 +1,204 @@
 import * as functions from "@google-cloud/functions-framework";
-import * as compute from "@google-cloud/compute";
+import { v1 } from "@google-cloud/compute";
+import { Firestore } from "@google-cloud/firestore";
+
+// Initialize clients
+const computeClient = new v1.InstancesClient();
+const zonesClient = new v1.ZonesClient();
+const firestore = new Firestore();
+
+const IDLE_THRESHOLD_MINUTES = 5;
+
+interface VMStatus {
+  instanceId: string;
+  instanceName?: string;
+  status: "active" | "idle";
+  autoHibernate: boolean;
+  lastActive: Date | string;
+  lastUpdated: Date | string;
+  cpuUsage?: number;
+}
+
+// Add an interface for Firestore timestamp
+interface FirestoreTimestamp {
+  toDate: () => Date;
+}
 
 /**
- * Cloud Function to stop GCP instances
- * Only stops instances that are in RUNNING state
+ * Process Idle VMs function
+ * Core functionality for checking and stopping idle VMs
  */
-export const stopIdleInstances: functions.HttpFunction = async (req, res) => {
-  try {
-    console.log("Starting auto-stop of instances");
+async function processIdleVMs() {
+  console.log("Starting to check for idle instances");
 
-    // Create Compute client
-    const computeClient = new compute.v1.InstancesClient();
-    const zonesClient = new compute.v1.ZonesClient();
-    const projectId = await computeClient.getProjectId();
+  // Get project ID
+  const projectId = await computeClient.getProjectId();
 
-    // Get all zones
-    const [zoneList] = await zonesClient.list({
+  // Get all VM statuses from Firestore
+  const vmStatusesSnapshot = await firestore.collection("vm_status").get();
+
+  if (vmStatusesSnapshot.empty) {
+    console.log("No VM status records found in Firestore");
+    return "No VM status records found in Firestore";
+  }
+
+  const vmStatuses: VMStatus[] = [];
+  vmStatusesSnapshot.forEach((doc: any) => {
+    const data = doc.data() as VMStatus;
+    // Convert Firestore timestamp to Date if needed
+    if (
+      data.lastActive &&
+      typeof data.lastActive !== "string" &&
+      typeof data.lastActive === "object" &&
+      "toDate" in data.lastActive
+    ) {
+      data.lastActive = (data.lastActive as FirestoreTimestamp).toDate();
+    }
+    vmStatuses.push(data);
+  });
+
+  console.log(`Found ${vmStatuses.length} VM status records`);
+
+  // Get all zones
+  const [zoneList] = await zonesClient.list({
+    project: projectId,
+  });
+  console.log(`Found ${zoneList.length} zones`);
+
+  let stoppedInstancesCount = 0;
+  const now = new Date();
+
+  // Process each zone
+  for (const zone of zoneList) {
+    if (!zone.name) continue;
+    const zoneName = zone.name;
+    console.log(`Processing zone: ${zoneName}`);
+
+    // Get instances in the zone
+    const [instanceList] = await computeClient.list({
       project: projectId,
+      zone: zoneName,
     });
 
-    console.log(`Found ${zoneList.length} zones in project ${projectId}`);
-
-    let stoppedCount = 0;
-    let skippedCount = 0;
-
-    // Process each zone
-    for (const zone of zoneList) {
-      if (!zone.name) continue;
-
-      // Get instances in this zone
-      const [instanceList] = await computeClient.list({
-        project: projectId,
-        zone: zone.name,
-      });
-
-      console.log(
-        `Found ${instanceList.length} instances in zone ${zone.name}`
-      );
+    if (instanceList && instanceList.length > 0) {
+      console.log(`Found ${instanceList.length} instances in zone ${zoneName}`);
 
       // Process each instance
       for (const instance of instanceList) {
-        if (!instance.name) continue;
+        if (!instance.name || !instance.id) continue;
 
-        // Check if instance is running
-        if (instance.status !== "RUNNING") {
-          console.log(
-            `Skipping instance ${instance.name} as it's not running (status: ${instance.status})`
-          );
-          skippedCount++;
-          continue;
-        }
+        const instanceId = instance.id;
+        const instanceName = instance.name;
 
-        // Stop the instance
-        try {
-          console.log(
-            `Stopping instance ${instance.name} in zone ${zone.name}`
-          );
-          await computeClient.stop({
-            project: projectId,
-            zone: zone.name,
-            instance: instance.name,
-          });
+        // Only process instances that are running
+        if (instance.status === "RUNNING") {
+          console.log(`Instance ${instanceName} (${instanceId}) is running`);
 
-          console.log(
-            `Successfully initiated stop for instance ${instance.name}`
+          // Find the corresponding VM status from Firestore
+          const vmStatus = vmStatuses.find(
+            (vm) => vm.instanceId === instanceId
           );
-          stoppedCount++;
-        } catch (error) {
-          console.error(`Error stopping instance ${instance.name}:`, error);
-          skippedCount++;
+
+          if (vmStatus) {
+            // Check if autoHibernate is enabled
+            if (vmStatus.autoHibernate) {
+              // Check if VM is idle and has status "idle"
+              if (vmStatus.status === "idle") {
+                // Check if VM is idle for more than threshold minutes
+                const lastActive =
+                  typeof vmStatus.lastActive === "string"
+                    ? new Date(vmStatus.lastActive)
+                    : vmStatus.lastActive;
+
+                const idleTimeMinutes =
+                  (now.getTime() - lastActive.getTime()) / (60 * 1000);
+
+                console.log(
+                  `Instance ${instanceName} last active: ${lastActive}, idle for ${idleTimeMinutes.toFixed(
+                    2
+                  )} minutes`
+                );
+
+                if (idleTimeMinutes > IDLE_THRESHOLD_MINUTES) {
+                  console.log(
+                    `Stopping idle instance ${instanceName} in zone ${zoneName}`
+                  );
+
+                  try {
+                    // Stop the instance
+                    const stopRequest = {
+                      project: projectId,
+                      zone: zoneName,
+                      instance: instanceName,
+                    };
+
+                    await computeClient.stop(stopRequest);
+
+                    console.log(
+                      `Successfully initiated stop for instance ${instanceName}`
+                    );
+                    stoppedInstancesCount++;
+                  } catch (error) {
+                    console.error(
+                      `Error stopping instance ${instanceName}:`,
+                      error
+                    );
+                  }
+                } else {
+                  console.log(
+                    `Instance ${instanceName} is not idle enough (${idleTimeMinutes.toFixed(
+                      2
+                    )} minutes)`
+                  );
+                }
+              } else {
+                console.log(
+                  `Instance ${instanceName} is not in idle status (current: ${vmStatus.status})`
+                );
+              }
+            } else {
+              console.log(
+                `Auto-hibernate is disabled for instance ${instanceName}`
+              );
+            }
+          } else {
+            console.log(
+              `No status information found for instance ${instanceName}`
+            );
+          }
+        } else {
+          console.log(
+            `Instance ${instanceName} is not running (status: ${instance.status})`
+          );
         }
       }
+    } else {
+      console.log(`No instances found in zone ${zoneName}`);
     }
-
-    const summary = `Auto-stop complete: stopped ${stoppedCount} instances, skipped ${skippedCount} instances`;
-    console.log(summary);
-
-    // Send HTTP response
-    res.status(200).send({ success: true, message: summary });
-  } catch (error) {
-    console.error("Error stopping instances:", error);
-    res.status(500).send({ success: false, error: String(error) });
   }
-};
+
+  const message = `Processed VM instances. Stopped ${stoppedInstancesCount} idle instances.`;
+  console.log(message);
+  return message;
+}
+
+/**
+ * Cloud Function that can be triggered via HTTP or Pub/Sub
+ * to stop idle GCP instances
+ */
+export const stopIdleInstances = functions.http(
+  "stopIdleInstances",
+  async (req, res) => {
+    try {
+      const result = await processIdleVMs();
+      res.status(200).send(result);
+    } catch (error) {
+      console.error("Error in stopIdleInstances function:", error);
+      res
+        .status(500)
+        .send(
+          `Error: ${error instanceof Error ? error.message : String(error)}`
+        );
+    }
+  }
+);

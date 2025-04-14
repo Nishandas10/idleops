@@ -5,10 +5,12 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "deploy": "gcloud functions deploy auto-stop-instances --gen2 --runtime nodejs20 --trigger-http --allow-unauthenticated --entry-point stopIdleInstances"
+    "deploy": "gcloud functions deploy auto-stop-instances --gen2 --runtime nodejs20 --trigger-http --allow-unauthenticated --entry-point stopIdleInstances",
+    "deploy:scheduled": "gcloud functions deploy auto-stop-instances-scheduled --gen2 --runtime nodejs20 --trigger-topic=idle-vm-check-trigger --entry-point stopIdleInstances"
   },
   "dependencies": {
     "@google-cloud/compute": "^4.0.0",
+    "@google-cloud/firestore": "^7.11.0",
     "@google-cloud/functions-framework": "^3.3.0"
   },
   "devDependencies": {
@@ -16,4 +18,4 @@
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0"
   }
-} 
+}
