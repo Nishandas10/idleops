@@ -24,7 +24,7 @@ enum OnboardingStep {
 // Import Firebase
 import { initializeApp, FirebaseApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, Auth, User } from 'firebase/auth';
-import { getFirestore, doc, updateDoc, Firestore } from 'firebase/firestore';
+import { getFirestore, doc, updateDoc, Firestore, getDoc, setDoc } from 'firebase/firestore';
 
 // Initialize Firebase
 const firebaseConfig = {
@@ -146,11 +146,30 @@ export default function Onboarding() {
   const completeOnboarding = async () => {
     try {
       if (currentUser && selectedProject) {
-        // Update user profile with GCP connection details
-        await updateDoc(doc(db, 'users', currentUser.uid), {
+        // Get reference to the user document
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        
+        // Check if the document exists
+        const docSnap = await getDoc(userDocRef);
+        
+        const userData = {
           gcpConnected: true,
-          selectedProject: selectedProject
-        });
+          selectedProject: selectedProject,
+          onboardingCompleted: true,
+          updatedAt: new Date().toISOString()
+        };
+        
+        if (docSnap.exists()) {
+          // Document exists, update it
+          await updateDoc(userDocRef, userData);
+        } else {
+          // Document doesn't exist, create it
+          await setDoc(userDocRef, {
+            ...userData,
+            email: currentUser.email,
+            createdAt: new Date().toISOString()
+          });
+        }
         
         // Redirect to dashboard
         router.push('/dashboard');
