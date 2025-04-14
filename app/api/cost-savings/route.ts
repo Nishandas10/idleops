@@ -58,11 +58,14 @@ interface CostSummary {
 // Initialize Firebase Admin (if not already initialized)
 if (!getApps().length) {
   try {
-    const keyPath = path.join(
-      process.cwd(),
-      "idleops-85936-firebase-adminsdk-fbsvc-7b5ff2eda9.json"
+    // Parse the service account JSON from environment variable
+    const serviceAccount = JSON.parse(
+      process.env.FIREBASE_SERVICE_ACCOUNT_KEY || "{}"
     );
-    const serviceAccount = JSON.parse(readFileSync(keyPath, "utf8"));
+
+    if (!serviceAccount.project_id) {
+      throw new Error("Invalid service account configuration");
+    }
 
     initializeApp({
       credential: cert(serviceAccount),
