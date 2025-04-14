@@ -208,7 +208,7 @@ export default function Onboarding() {
         return (
           <div className="text-center p-8">
             <h2 className="text-2xl font-bold mb-4">Onboarding Complete!</h2>
-            <p className="mb-6">You've successfully connected your GCP account and selected your project.</p>
+            <p className="mb-6">You&apos;ve successfully connected your GCP account and selected your project.</p>
             <button
               onClick={completeOnboarding}
               className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
