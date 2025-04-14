@@ -1,4 +1,4 @@
-import { type NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { InstancesClient } from "@google-cloud/compute/build/src/v1";
 import { GoogleAuth } from "google-auth-library";
 import { readFileSync } from "fs";
@@ -9,12 +9,11 @@ interface VMActionRequest {
   zone: string;
 }
 
+// In Next.js 15, the dynamic route parameter can be destructured directly from the second argument.
 export async function POST(
   req: NextRequest,
-  { params }: { params: { action: string } }
-) {
-  const { action } = params;
-
+  { params: { action } }: { params: { action: string } }
+): Promise<NextResponse> {
   if (action !== "start" && action !== "stop") {
     return NextResponse.json(
       { error: "Invalid action. Must be 'start' or 'stop'" },
@@ -23,10 +22,9 @@ export async function POST(
   }
 
   try {
+    // Parse the JSON body with basic type validation
     const body = (await req.json()) as Partial<VMActionRequest>;
-
     const { instanceId, zone } = body;
-
     if (!instanceId || !zone) {
       return NextResponse.json(
         { error: "Missing 'instanceId' or 'zone'" },
@@ -34,8 +32,9 @@ export async function POST(
       );
     }
 
+    // Load service account credentials from file system
     const keyPath = path.join(process.cwd(), "service-account-key.json");
-    const credentials = JSON.parse(readFileSync(keyPath, "utf-8"));
+    const credentials = JSON.parse(readFileSync(keyPath, "utf8"));
 
     const auth = new GoogleAuth({
       credentials,
@@ -44,12 +43,14 @@ export async function POST(
 
     const instancesClient = new InstancesClient({ auth });
 
+    // Build the request for the Compute API
     const vmRequest = {
-      project: process.env.GCP_PROJECT_ID!,
+      project: process.env.GCP_PROJECT_ID!, // make sure this env var is set
       zone,
       instance: instanceId,
     };
 
+    // Execute the appropriate method based on action
     const [operation] =
       action === "start"
         ? await instancesClient.start(vmRequest)
