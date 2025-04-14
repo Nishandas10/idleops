@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { InstancesClient } from "@google-cloud/compute/build/src/v1";
 import { GoogleAuth } from "google-auth-library";
-import { readFileSync } from "fs";
-import path from "path";
 
 interface VMActionRequest {
   instanceId: string;
@@ -24,7 +22,6 @@ export async function POST(
   }
 
   try {
-    // Rest of your code remains the same
     const body = (await req.json()) as Partial<VMActionRequest>;
     const { instanceId, zone } = body;
     if (!instanceId || !zone) {
@@ -34,9 +31,12 @@ export async function POST(
       );
     }
 
-    // Load service account credentials from file system
-    const keyPath = path.join(process.cwd(), "service-account-key.json");
-    const credentials = JSON.parse(readFileSync(keyPath, "utf8"));
+    // Get service account credentials from environment variable
+    const credentials = JSON.parse(process.env.GCP_SERVICE_ACCOUNT_KEY || "{}");
+
+    if (!credentials.project_id) {
+      throw new Error("Invalid GCP service account configuration");
+    }
 
     const auth = new GoogleAuth({
       credentials,

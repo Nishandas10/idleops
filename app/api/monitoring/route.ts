@@ -1,6 +1,4 @@
 import monitoring_v3 from "@google-cloud/monitoring";
-import { readFileSync } from "fs";
-import path from "path";
 import { NextResponse } from "next/server";
 import { InstancesClient } from "@google-cloud/compute/build/src/v1";
 
@@ -22,10 +20,12 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const instanceId = url.searchParams.get("instanceId");
 
-    // Load service account credentials
-    const keyPath = path.join(process.cwd(), "service-account-key.json");
-    const keyContent = readFileSync(keyPath, "utf8");
-    const credentials = JSON.parse(keyContent);
+    // Get service account credentials from environment variable
+    const credentials = JSON.parse(process.env.GCP_SERVICE_ACCOUNT_KEY || "{}");
+
+    if (!credentials.project_id) {
+      throw new Error("Invalid GCP service account configuration");
+    }
 
     // Initialize Cloud Monitoring client with explicit options
     const client = new monitoring_v3.MetricServiceClient({
