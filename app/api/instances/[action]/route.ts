@@ -11,9 +11,9 @@ interface VMActionRequest {
 
 export async function POST(
   request: NextRequest,
-  context: { params: { action: string } }
+  { params }: { params: { action: string } }
 ) {
-  const { action } = context.params;
+  const { action } = params;
 
   if (action !== "start" && action !== "stop") {
     return NextResponse.json(
@@ -32,28 +32,23 @@ export async function POST(
       );
     }
 
-    // Load and parse the service account key
     const keyPath = path.join(process.cwd(), "service-account-key.json");
     const keyContent = readFileSync(keyPath, "utf8");
     const credentials = JSON.parse(keyContent);
 
-    // Create auth client with appropriate scope
     const auth = new GoogleAuth({
       credentials,
       scopes: ["https://www.googleapis.com/auth/compute"],
     });
 
-    // Initialize client with auth
     const instancesClient = new InstancesClient({ auth });
 
-    // Prepare the request based on the action
     const vmRequest = {
-      project: process.env.GCP_PROJECT_ID,
+      project: process.env.GCP_PROJECT_ID!,
       zone: body.zone,
       instance: body.instanceId,
     };
 
-    // Execute the appropriate action
     const [operation] =
       action === "start"
         ? await instancesClient.start(vmRequest)
