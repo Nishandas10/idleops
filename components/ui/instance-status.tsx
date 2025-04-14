@@ -4,6 +4,7 @@ import { initializeApp, FirebaseApp } from 'firebase/app';
 import { getFirestore, Firestore } from 'firebase/firestore';
 import { getAuth, Auth } from 'firebase/auth';
 import { listenToVMStatusChanges, VMStatus, updateVMStatus } from "@/lib/firebase/vmStatus";
+import { onAuthStateChanged } from 'firebase/auth';
 
 interface InstanceStatusProps {
     instanceId: string;
@@ -60,7 +61,33 @@ export function InstanceStatus({
     const [loading, setLoading] = useState(true);
     const [lastNotificationTime, setLastNotificationTime] = useState<Date | null>(null);
     const [vmStatus, setVmStatus] = useState<VMStatus | null>(null);
-    const [refreshInterval, setRefreshInterval] = useState<number>(10000); // Start with 10 seconds refresh
+    const [refreshInterval, setRefreshInterval] = useState<number>(10000);
+    const [currentUser, setCurrentUser] = useState<any>(null);
+
+    // Listen for auth state changes
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+            setCurrentUser(user);
+        });
+        
+        return () => unsubscribe();
+    }, []);
+
+    useEffect(() => {
+        if (!db || !currentUser) return;
+
+        // Set up listener for VM status changes
+        const unsubscribe = listenToVMStatusChanges(
+            db,
+            currentUser.uid,
+            instanceId,
+            (status) => {
+                setVmStatus(status);
+            }
+        );
+
+        return () => unsubscribe();
+    }, [db, instanceId, currentUser]);
 
     const handleHibernate = async () => {
         try {
@@ -159,19 +186,6 @@ export function InstanceStatus({
         const interval = setInterval(fetchMetrics, refreshInterval);
         return () => clearInterval(interval);
     }, [instanceId, refreshInterval, db, vmStatus]);
-
-    // Listen for VM status changes from Firestore
-    useEffect(() => {
-        if (!db || !instanceId) return;
-        
-        const unsubscribe = listenToVMStatusChanges(db, instanceId, (status) => {
-            setVmStatus(status);
-            // If status data is loaded, we can end loading state
-            setLoading(false);
-        });
-        
-        return () => unsubscribe();
-    }, [db, instanceId]);
 
     useEffect(() => {
         // Skip if autoHibernate is off or we don't have status data

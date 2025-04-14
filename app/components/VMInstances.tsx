@@ -131,8 +131,8 @@ export default function VMInstances() {
 
   useEffect(() => {
     // Set up listener for VM status changes
-    if (db) {
-      const unsubscribe = listenToAllVMStatusChanges(db, (statuses) => {
+    if (db && currentUser) {
+      const unsubscribe = listenToAllVMStatusChanges(db, currentUser.uid, (statuses) => {
         // Convert array of statuses to a record for easier lookup
         const statusMap: Record<string, VMStatus> = {};
         statuses.forEach(status => {
@@ -165,7 +165,7 @@ export default function VMInstances() {
       
       return () => unsubscribe();
     }
-  }, [db]);
+  }, [db, currentUser]);
 
   useEffect(() => {
     // Load saved environments from localStorage
@@ -284,9 +284,10 @@ export default function VMInstances() {
           lastUpdated: new Date().toISOString()
         };
         
-        // Update with new autoHibernate value
+        // Update with new autoHibernate value and add userId
         await updateVMStatus(db, {
           ...vmStatus,
+          userId: currentUser.uid,
           autoHibernate: newAutoHibernate
         });
         
