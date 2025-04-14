@@ -11,7 +11,7 @@
   "dependencies": {
     "@google-cloud/compute": "^4.0.0",
     "@google-cloud/firestore": "^7.11.0",
-    "@google-cloud/functions-framework": "^3.3.0",
+    "@google-cloud/functions-framework": "^3.5.1",
     "@google-cloud/secret-manager": "^6.0.1"
   },
   "devDependencies": {
