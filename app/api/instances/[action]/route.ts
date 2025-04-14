@@ -1,5 +1,5 @@
+import { type NextRequest, NextResponse } from "next/server";
 import { InstancesClient } from "@google-cloud/compute/build/src/v1";
-import { NextRequest, NextResponse } from "next/server";
 import { GoogleAuth } from "google-auth-library";
 import { readFileSync } from "fs";
 import path from "path";
@@ -9,16 +9,15 @@ interface VMActionRequest {
   zone: string;
 }
 
-type RouteSegment = {
-  params: {
-    action: string;
-  };
-};
+// Next.js dynamic route: app/api/instances/[action]/route.ts
+export async function POST(
+  req: NextRequest,
+  context: { params: { action: string } }
+) {
+  const { action } = context.params;
 
-export async function POST(request: NextRequest, { params }: RouteSegment) {
-  const { action } = params;
-
-  if (action !== "start" && action !== "stop") {
+  // Validate action
+  if (!["start", "stop"].includes(action)) {
     return NextResponse.json(
       { error: "Invalid action. Must be 'start' or 'stop'" },
       { status: 400 }
@@ -26,61 +25,48 @@ export async function POST(request: NextRequest, { params }: RouteSegment) {
   }
 
   try {
-    const body: VMActionRequest = await request.json();
+    // Validate and parse request body
+    const body = (await req.json()) as Partial<VMActionRequest>;
+    const { instanceId, zone } = body;
 
-    if (!body.instanceId || !body.zone) {
+    if (!instanceId || !zone) {
       return NextResponse.json(
-        { error: "Instance ID and zone are required" },
+        { error: "Missing 'instanceId' or 'zone'" },
         { status: 400 }
       );
     }
 
-    // Load and parse the service account key
+    // Load service account credentials
     const keyPath = path.join(process.cwd(), "service-account-key.json");
-    const keyContent = readFileSync(keyPath, "utf8");
-    const credentials = JSON.parse(keyContent);
+    const credentials = JSON.parse(readFileSync(keyPath, "utf-8"));
 
-    // Create auth client with appropriate scope
     const auth = new GoogleAuth({
       credentials,
       scopes: ["https://www.googleapis.com/auth/compute"],
     });
 
-    // Initialize client with auth
     const instancesClient = new InstancesClient({ auth });
 
-    // Prepare the request based on the action
     const vmRequest = {
       project: process.env.GCP_PROJECT_ID!,
-      zone: body.zone,
-      instance: body.instanceId,
+      zone,
+      instance: instanceId,
     };
 
-    // Execute the appropriate action
+    // Execute start or stop
     const [operation] =
       action === "start"
         ? await instancesClient.start(vmRequest)
         : await instancesClient.stop(vmRequest);
 
     return NextResponse.json({
-      message: `VM instance ${action} operation initiated`,
+      message: `VM ${action} operation started.`,
       operationName: operation.name,
     });
-  } catch (err) {
-    console.error("Error details:", {
-      message: err instanceof Error ? err.message : "Unknown error",
-      stack: err instanceof Error ? err.stack : undefined,
-      error: err,
-    });
-
+  } catch (error: any) {
+    console.error("Error performing VM action:", error);
     return NextResponse.json(
-      {
-        error:
-          err instanceof Error
-            ? err.message
-            : `Failed to ${action} VM instance`,
-        details: err,
-      },
+      { error: error.message ?? "Internal server error" },
       { status: 500 }
     );
   }
