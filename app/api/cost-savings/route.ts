@@ -57,7 +57,7 @@ interface CostSummary {
 if (!getApps().length) {
   try {
     const serviceAccount = JSON.parse(
-      process.env.GCP_SERVICE_ACCOUNT_KEY || ""
+      process.env.FIREBASE_SERVICE_ACCOUNT_KEY || ""
     );
 
     initializeApp({
