@@ -42,3 +42,4 @@ next-env.d.ts
 
 # Ignore service account key file
 service-account-key.json
+idleops-85936-firebase-adminsdk-fbsvc-7b5ff2eda9.json
