@@ -259,13 +259,13 @@ export function InstanceStatus({
     const displayAsActive = !isIdle || (cpuIsZero && wasRecentlyActive);
     
     // Update Firestore for consistency if the status doesn't match our display
-    if (db && vmStatus && vmStatus.status !== (displayAsActive ? 'active' : 'idle')) {
+    if (db && vmStatus && currentUser && vmStatus.status !== (displayAsActive ? 'active' : 'idle')) {
         updateVMStatus(db, {
             ...vmStatus,
             status: displayAsActive ? 'active' : 'idle',
             cpuUsage: latestMetric.cpu,
             lastUpdated: new Date()
-        });
+        }, currentUser.uid);
     }
 
     return (
