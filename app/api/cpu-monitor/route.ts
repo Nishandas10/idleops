@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
     const instanceId = searchParams.get("instanceId");
     const instanceName = searchParams.get("instanceName");
     const autoHibernateParam = searchParams.get("autoHibernate");
+    const userId = searchParams.get("userId");
 
     // Convert autoHibernate param to boolean
     const autoHibernate = autoHibernateParam === "true";
@@ -49,10 +50,18 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    if (!userId) {
+      return NextResponse.json(
+        { error: "userId query parameter is required" },
+        { status: 400 }
+      );
+    }
+
     // Create monitor if it doesn't exist
     if (!monitors[instanceId]) {
       monitors[instanceId] = new CPUMonitor(
         instanceId,
+        userId,
         instanceName || undefined,
         db,
         autoHibernate
