@@ -34,3 +34,44 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Firestore Database Structure Change
+
+The Firestore database structure for VM status has been updated to organize VM instances by user. This enhances privacy and performance by only fetching VM instances associated with the current user.
+
+### New Structure
+
+```
+vm_status (collection)
+  └── userId (document)
+       └── instances (collection)
+            └── instanceId (document)
+                 └── VM status data
+```
+
+### Migration
+
+To migrate existing VM status data to the new structure, run the migration script:
+
+```bash
+# Install ts-node if you don't have it yet
+npm install -g ts-node
+
+# Run the migration script
+ts-node scripts/migrateVMStatus.ts
+```
+
+Notes:
+- The migration script will copy all existing VM status documents to the new structure.
+- By default, it won't delete the old documents. Once you verify the migration was successful, you can uncomment the `deleteDoc` line in the script to remove the old documents.
+- If the script can't determine which user owns a VM instance, it will assign it to the first user found (or a 'system' user if no users exist).
+
+### Code Changes
+
+Several files were updated to support this new structure:
+
+1. `lib/firebase/vmStatus.ts` - Updated API to include userId parameter
+2. `app/components/VMInstances.tsx` - Modified to fetch VM instances only for the current user
+3. `app/api/vm-status/route.ts` - Updated API routes to work with the new structure
+4. `app/api/vm-status/update/route.ts` - Updated to require userId parameter
+5. `app/api/cpu-monitor/cpuMonitor.server.ts` - Modified to store VM status under the correct user

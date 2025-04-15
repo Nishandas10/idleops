@@ -13,6 +13,9 @@ import {
   Firestore,
   DocumentData,
   QuerySnapshot,
+  getDocsFromServer,
+  getDocs,
+  collectionGroup,
 } from "firebase/firestore";
 
 export interface VMStatus {
@@ -27,14 +30,22 @@ export interface VMStatus {
 
 /**
  * Updates VM status in Firestore
+ * Now organized by userId/instanceId structure
  */
 export const updateVMStatus = async (
   db: Firestore,
-  vmStatus: VMStatus
+  vmStatus: VMStatus,
+  userId: string
 ): Promise<void> => {
   try {
-    // Create document reference
-    const docRef = doc(db, "vm_status", vmStatus.instanceId);
+    // Create document reference with user ID in the path
+    const docRef = doc(
+      db,
+      "vm_status",
+      userId,
+      "instances",
+      vmStatus.instanceId
+    );
 
     // Check if document exists
     const docSnap = await getDoc(docRef);
@@ -78,9 +89,10 @@ export const updateVMStatus = async (
 export const listenToVMStatusChanges = (
   db: Firestore,
   instanceId: string,
+  userId: string,
   callback: (status: VMStatus) => void
 ) => {
-  const docRef = doc(db, "vm_status", instanceId);
+  const docRef = doc(db, "vm_status", userId, "instances", instanceId);
 
   return onSnapshot(
     docRef,
@@ -97,13 +109,42 @@ export const listenToVMStatusChanges = (
 };
 
 /**
- * Listen for status changes across all VM instances
+ * Listen for status changes across all VM instances for a specific user
+ */
+export const listenToUserVMStatusChanges = (
+  db: Firestore,
+  userId: string,
+  callback: (statuses: VMStatus[]) => void
+) => {
+  const vmStatusRef = collection(db, "vm_status", userId, "instances");
+
+  return onSnapshot(
+    vmStatusRef,
+    (snapshot: QuerySnapshot<DocumentData>) => {
+      const statuses: VMStatus[] = [];
+      snapshot.forEach((doc) => {
+        statuses.push(doc.data() as VMStatus);
+      });
+      callback(statuses);
+    },
+    (error) => {
+      console.error(
+        `Error listening to VM status changes for user ${userId}:`,
+        error
+      );
+    }
+  );
+};
+
+/**
+ * Listen for status changes across all VM instances (admin function)
+ * This is kept for backward compatibility and admin purposes
  */
 export const listenToAllVMStatusChanges = (
   db: Firestore,
   callback: (statuses: VMStatus[]) => void
 ) => {
-  const vmStatusRef = collection(db, "vm_status");
+  const vmStatusRef = collectionGroup(db, "instances");
 
   return onSnapshot(
     vmStatusRef,
@@ -121,14 +162,15 @@ export const listenToAllVMStatusChanges = (
 };
 
 /**
- * Get current VM status
+ * Get current VM status for a specific user and instance
  */
 export const getVMStatus = async (
   db: Firestore,
-  instanceId: string
+  instanceId: string,
+  userId: string
 ): Promise<VMStatus | null> => {
   try {
-    const docRef = doc(db, "vm_status", instanceId);
+    const docRef = doc(db, "vm_status", userId, "instances", instanceId);
     const docSnap = await getDoc(docRef);
 
     if (docSnap.exists()) {
@@ -138,6 +180,29 @@ export const getVMStatus = async (
     return null;
   } catch (error) {
     console.error("Error getting VM status from Firestore:", error);
+    throw error;
+  }
+};
+
+/**
+ * Get all VM statuses for a specific user
+ */
+export const getUserVMStatuses = async (
+  db: Firestore,
+  userId: string
+): Promise<VMStatus[]> => {
+  try {
+    const vmStatusRef = collection(db, "vm_status", userId, "instances");
+    const snapshot = await getDocs(vmStatusRef);
+
+    const statuses: VMStatus[] = [];
+    snapshot.forEach((doc) => {
+      statuses.push(doc.data() as VMStatus);
+    });
+
+    return statuses;
+  } catch (error) {
+    console.error(`Error getting VM statuses for user ${userId}:`, error);
     throw error;
   }
 };

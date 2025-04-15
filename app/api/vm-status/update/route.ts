@@ -28,15 +28,13 @@ try {
   console.error("Firebase initialization error:", error);
 }
 
-// POST handler - Update VM status from server-side code
+// POST handler to update VM status
 export async function POST(request: NextRequest) {
   try {
-    // This endpoint is intended for server-side code, but we can add auth later if needed
-
     // Get the status data from the request body
     const data = await request.json();
 
-    // Validate required fields
+    // Check for required fields
     if (!data.instanceId || !data.status) {
       return NextResponse.json(
         { error: "Missing required fields: instanceId or status" },
@@ -44,7 +42,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create status object
+    // Check for userId
+    if (!data.userId) {
+      return NextResponse.json(
+        { error: "Missing required field: userId" },
+        { status: 400 }
+      );
+    }
+
+    // Create VM status object
     const vmStatus: VMStatus = {
       instanceId: data.instanceId,
       instanceName: data.instanceName || data.instanceId,
@@ -56,7 +62,7 @@ export async function POST(request: NextRequest) {
     };
 
     // Update VM status in Firestore
-    await updateVMStatus(db, vmStatus);
+    await updateVMStatus(db, vmStatus, data.userId);
 
     return NextResponse.json({
       message: "VM status updated successfully",

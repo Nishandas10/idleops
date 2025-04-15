@@ -10,6 +10,7 @@ interface Instance {
   isIdle: boolean;
   currentCPUUsage: number;
   autoHibernate: boolean; // Add autoHibernate field
+  userId?: string; // Add userId field
 }
 
 export class CPUMonitor {
@@ -27,7 +28,8 @@ export class CPUMonitor {
     instanceId: string,
     instanceName?: string,
     db?: Firestore,
-    autoHibernate: boolean = false
+    autoHibernate: boolean = false,
+    userId?: string
   ) {
     this.instance = {
       id: instanceId,
@@ -36,6 +38,7 @@ export class CPUMonitor {
       isIdle: false,
       currentCPUUsage: 0,
       autoHibernate: autoHibernate,
+      userId: userId,
     };
 
     // Store Firestore instance if provided
@@ -134,15 +137,22 @@ export class CPUMonitor {
     if (!this.db) return;
 
     try {
-      await updateVMStatus(this.db, {
-        instanceId: this.instance.id,
-        instanceName: this.instance.name,
-        status: this.instance.isIdle ? "idle" : "active",
-        autoHibernate: this.instance.autoHibernate,
-        lastActive: this.instance.lastActive,
-        lastUpdated: new Date(),
-        cpuUsage: this.instance.currentCPUUsage,
-      });
+      // Use the user ID from the instance or a default user ID
+      const userId = this.instance.userId || "system";
+
+      await updateVMStatus(
+        this.db,
+        {
+          instanceId: this.instance.id,
+          instanceName: this.instance.name,
+          status: this.instance.isIdle ? "idle" : "active",
+          autoHibernate: this.instance.autoHibernate,
+          lastActive: this.instance.lastActive,
+          lastUpdated: new Date(),
+          cpuUsage: this.instance.currentCPUUsage,
+        },
+        userId
+      );
     } catch (error) {
       console.error("Failed to update VM status in Firestore:", error);
     }

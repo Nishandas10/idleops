@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
     // Get the query parameters
     const { searchParams } = new URL(request.url);
     const instanceId = searchParams.get("instanceId");
+    const userId = searchParams.get("userId");
 
     if (!instanceId) {
       return NextResponse.json(
@@ -42,8 +43,15 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    if (!userId) {
+      return NextResponse.json(
+        { error: "Missing required parameter: userId" },
+        { status: 400 }
+      );
+    }
+
     // Get the status from Firestore
-    const status = await getVMStatus(db, instanceId);
+    const status = await getVMStatus(db, instanceId, userId);
 
     if (!status) {
       return NextResponse.json(
@@ -109,7 +117,7 @@ export async function POST(request: NextRequest) {
     };
 
     // Update VM status in Firestore
-    await updateVMStatus(db, vmStatus);
+    await updateVMStatus(db, vmStatus, userId);
 
     return NextResponse.json({
       message: "VM status updated successfully",

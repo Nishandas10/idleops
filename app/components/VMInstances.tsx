@@ -7,7 +7,7 @@ import { InstanceStatus } from '@/components/ui/instance-status';
 import { initializeApp, FirebaseApp } from 'firebase/app';
 import { getFirestore, onSnapshot, collection, query, doc, updateDoc, Firestore } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged, Auth, User } from 'firebase/auth';
-import { listenToAllVMStatusChanges, VMStatus, updateVMStatus } from '@/lib/firebase/vmStatus';
+import { listenToAllVMStatusChanges, VMStatus, updateVMStatus, listenToUserVMStatusChanges } from '@/lib/firebase/vmStatus';
 
 interface VMInstance {
   id: string;
@@ -130,9 +130,9 @@ export default function VMInstances() {
   }, []);
 
   useEffect(() => {
-    // Set up listener for VM status changes
-    if (db) {
-      const unsubscribe = listenToAllVMStatusChanges(db, (statuses) => {
+    // Set up listener for VM status changes for the current user
+    if (db && currentUser) {
+      const unsubscribe = listenToUserVMStatusChanges(db, currentUser.uid, (statuses) => {
         // Convert array of statuses to a record for easier lookup
         const statusMap: Record<string, VMStatus> = {};
         statuses.forEach(status => {
@@ -165,7 +165,7 @@ export default function VMInstances() {
       
       return () => unsubscribe();
     }
-  }, [db]);
+  }, [db, currentUser]);
 
   useEffect(() => {
     // Load saved environments from localStorage
@@ -252,58 +252,49 @@ export default function VMInstances() {
   };
 
   const handleAutoHibernateToggle = async (instanceId: string) => {
-    // Find the instance
-    const instance = instances.find(i => i.id === instanceId);
-    if (!instance) return;
-    
-    // Toggle autoHibernate
-    const newAutoHibernate = !instance.autoHibernate;
-    
-    // Update instances state immediately for UI responsiveness
-    setInstances(prevInstances =>
-      prevInstances.map(instance =>
-        instance.id === instanceId
-          ? {
-              ...instance,
-              autoHibernate: newAutoHibernate
-            }
-          : instance
-      )
-    );
-    
     try {
+      // First update the local state for immediate UI feedback
+      setInstances(prevInstances => 
+        prevInstances.map(instance => 
+          instance.id === instanceId
+            ? { ...instance, autoHibernate: !instance.autoHibernate }
+            : instance
+        )
+      );
+      
+      // Find the updated instance
+      const updatedInstance = instances.find(instance => instance.id === instanceId);
+      if (!updatedInstance) return;
+      
+      // Toggle the autoHibernate value
+      const newAutoHibernateValue = !updatedInstance.autoHibernate;
+      
       // Update in Firestore
       if (db && currentUser) {
-        // Use the VM status data if available, otherwise create a basic one
+        // Get the current VM status
         const vmStatus = vmStatuses[instanceId] || {
           instanceId,
-          instanceName: instance.name,
-          status: 'active', // Default to active
-          autoHibernate: newAutoHibernate,
-          lastActive: new Date().toISOString(),
-          lastUpdated: new Date().toISOString()
+          instanceName: updatedInstance.name,
+          status: (updatedInstance.vmStatus || 'idle') as 'active' | 'idle',
+          autoHibernate: newAutoHibernateValue,
+          lastActive: updatedInstance.lastActive || new Date().toISOString(),
+          lastUpdated: new Date().toISOString(),
+          cpuUsage: updatedInstance.cpuUsage
         };
         
-        // Update with new autoHibernate value
+        // Update with the new autoHibernate value
         await updateVMStatus(db, {
           ...vmStatus,
-          autoHibernate: newAutoHibernate
-        });
-        
-        console.log(`Updated autoHibernate for ${instanceId} to ${newAutoHibernate}`);
+          autoHibernate: newAutoHibernateValue
+        }, currentUser.uid);
       }
-    } catch (err) {
-      console.error('Failed to update autoHibernate setting:', err);
-      setError('Failed to update autoHibernate setting');
-      
-      // Revert the change in state if Firestore update fails
-      setInstances(prevInstances =>
-        prevInstances.map(instance =>
-          instance.id === instanceId
-            ? {
-                ...instance,
-                autoHibernate: !newAutoHibernate
-              }
+    } catch (error) {
+      console.error('Error toggling auto-hibernate:', error);
+      // Revert the state change if there was an error
+      setInstances(prevInstances => 
+        prevInstances.map(instance => 
+          instance.id === instanceId && vmStatuses[instanceId]
+            ? { ...instance, autoHibernate: vmStatuses[instanceId].autoHibernate }
             : instance
         )
       );
