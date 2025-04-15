@@ -38,8 +38,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.log(`Fetching GCP instances for project: ${projectId}`);
-
     // First, get a list of zones in the project
     const zonesResponse = await fetch(
       `https://compute.googleapis.com/compute/v1/projects/${projectId}/zones`,
@@ -52,27 +50,11 @@ export async function GET(request: NextRequest) {
     );
 
     if (!zonesResponse.ok) {
-      const errorText = await zonesResponse.text();
-      console.error(
-        `Error fetching GCP zones: Status ${zonesResponse.status}`,
-        errorText
-      );
-
-      // Special handling for auth errors
-      if (zonesResponse.status === 401 || zonesResponse.status === 403) {
-        console.error("Authentication error accessing GCP zones API");
-        return NextResponse.json(
-          {
-            error: "Authentication error with Google Cloud",
-            details:
-              "You do not have permission to access this project. Make sure you're signed in with the correct Google account.",
-          },
-          { status: zonesResponse.status }
-        );
-      }
+      const error = await zonesResponse.text();
+      console.error("Error fetching GCP zones:", error);
 
       return NextResponse.json(
-        { error: "Failed to fetch GCP zones", details: errorText },
+        { error: "Failed to fetch GCP zones", details: error },
         { status: zonesResponse.status }
       );
     }
@@ -80,15 +62,11 @@ export async function GET(request: NextRequest) {
     const zonesData = await zonesResponse.json();
     const zones = zonesData.items || [];
 
-    console.log(`Found ${zones.length} zones in project ${projectId}`);
-
     // For each zone, fetch instances
     const instancesPromises = zones.map(async (zone: any) => {
       const zoneName = zone.name;
 
       try {
-        console.log(`Fetching instances in zone: ${zoneName}`);
-
         const instancesResponse = await fetch(
           `https://compute.googleapis.com/compute/v1/projects/${projectId}/zones/${zoneName}/instances`,
           {
@@ -100,18 +78,15 @@ export async function GET(request: NextRequest) {
         );
 
         if (!instancesResponse.ok) {
-          const errorText = await instancesResponse.text();
           console.warn(
-            `Error fetching instances in zone ${zoneName}: Status ${instancesResponse.status}`,
-            errorText
+            `Error fetching instances in zone ${zoneName}:`,
+            await instancesResponse.text()
           );
           return [];
         }
 
         const instancesData = await instancesResponse.json();
         const instances = instancesData.items || [];
-
-        console.log(`Found ${instances.length} instances in zone ${zoneName}`);
 
         return instances.map((instance: any) => {
           // Extract machine type name from the URL
@@ -142,10 +117,6 @@ export async function GET(request: NextRequest) {
 
     // Flatten the arrays
     const instances: Instance[] = instanceArrays.flat();
-
-    console.log(
-      `Successfully fetched ${instances.length} VM instances across all zones`
-    );
 
     return NextResponse.json({ instances });
   } catch (error) {

@@ -5,7 +5,10 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import ProjectSelection from './components/ProjectSelection';
 import InstanceList from './components/InstanceList';
-import GCPOAuth from './components/GCPOAuth';
+import dynamic from 'next/dynamic';
+
+// Dynamically import the GCPOAuth component
+const GCPOAuth = dynamic(() => import('./components/GCPOAuth'), { ssr: false });
 
 // Onboarding steps
 enum OnboardingStep {
@@ -55,28 +58,6 @@ export default function Onboarding() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [needsGcpOAuth, setNeedsGcpOAuth] = useState<boolean>(false);
 
-  // Check for GCP token in localStorage
-  useEffect(() => {
-    // This effect should run only on the client
-    if (typeof window !== 'undefined') {
-      const token = localStorage.getItem('gcpToken');
-      const oauthError = localStorage.getItem('gcpOAuthError');
-      
-      if (token) {
-        console.log("Found GCP token in localStorage");
-        localStorage.removeItem('gcpToken');
-        setGcpToken(token);
-        fetchProjects(token);
-        setNeedsGcpOAuth(false);
-      } else if (oauthError) {
-        console.error("GCP OAuth error:", oauthError);
-        localStorage.removeItem('gcpOAuthError');
-        setError(`GCP authentication error: ${oauthError}. Please make sure you've selected the correct Google account.`);
-        setNeedsGcpOAuth(false);
-      }
-    }
-  }, []);
-  
   // Reset error when changing steps
   useEffect(() => {
     setError(null);
@@ -87,10 +68,6 @@ export default function Onboarding() {
     const unsubscribe = onAuthStateChanged(auth, async (user: User | null) => {
       if (user) {
         setCurrentUser(user);
-        
-        // Skip the token exchange if we already have one from localStorage
-        if (gcpToken) return;
-        
         try {
           // Get the ID token from Firebase Auth
           const firebaseToken = await getIdToken(user);
@@ -127,15 +104,12 @@ export default function Onboarding() {
     });
 
     return () => unsubscribe();
-  }, [router, gcpToken]);
+  }, [router]);
 
   // Fetch projects from GCP
   const fetchProjects = async (token: string) => {
     try {
       setLoading(true);
-      setError(null);
-      console.log("Fetching GCP projects with token...");
-      
       const response = await fetch('/api/gcp/projects', {
         method: 'GET',
         headers: {
@@ -143,30 +117,14 @@ export default function Onboarding() {
         }
       });
       
-      const data = await response.json();
-      
       if (!response.ok) {
-        const errorMsg = data.details || data.error || 'Failed to fetch GCP projects';
-        console.error('GCP projects fetch error:', errorMsg);
-        throw new Error(errorMsg);
+        throw new Error('Failed to fetch GCP projects');
       }
       
-      // Check if there are any projects
-      const projectsList = data.projects || [];
-      console.log(`Fetched ${projectsList.length} GCP projects`);
-      
-      if (projectsList.length === 0) {
-        setError("No GCP projects found for your account. Please make sure you have access to at least one Google Cloud project.");
-      }
-      
-      setProjects(projectsList);
+      const data = await response.json();
+      setProjects(data.projects || []);
     } catch (err) {
-      const errorMessage = err instanceof Error 
-        ? err.message 
-        : 'Failed to fetch GCP projects';
-      
-      setError(errorMessage);
-      console.error('Error fetching projects:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch GCP projects');
     } finally {
       setLoading(false);
     }
@@ -183,9 +141,6 @@ export default function Onboarding() {
   const fetchInstances = async (token: string, projectId: string) => {
     try {
       setLoading(true);
-      setError(null);
-      console.log(`Fetching instances for project ${projectId}...`);
-      
       const response = await fetch(`/api/gcp/instances?projectId=${projectId}`, {
         method: 'GET',
         headers: {
@@ -193,30 +148,14 @@ export default function Onboarding() {
         }
       });
       
-      const data = await response.json();
-      
       if (!response.ok) {
-        const errorMsg = data.details || data.error || 'Failed to fetch GCP instances';
-        console.error('GCP instances fetch error:', errorMsg);
-        throw new Error(errorMsg);
+        throw new Error('Failed to fetch GCP instances');
       }
       
-      // Check if there are any instances
-      const instancesList = data.instances || [];
-      console.log(`Fetched ${instancesList.length} instances from project ${projectId}`);
-      
-      if (instancesList.length === 0) {
-        setError("No VM instances found in this project. You can still proceed with setup.");
-      }
-      
-      setInstances(instancesList);
+      const data = await response.json();
+      setInstances(data.instances || []);
     } catch (err) {
-      const errorMessage = err instanceof Error 
-        ? err.message 
-        : 'Failed to fetch GCP instances';
-      
-      setError(errorMessage);
-      console.error('Error fetching instances:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch GCP instances');
     } finally {
       setLoading(false);
     }
@@ -257,6 +196,19 @@ export default function Onboarding() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to complete onboarding');
     }
+  };
+
+  // Handle receiving a GCP token from OAuth
+  const handleGcpTokenReceived = (token: string) => {
+    setNeedsGcpOAuth(false);
+    setGcpToken(token);
+    fetchProjects(token);
+  };
+  
+  // Handle OAuth error
+  const handleGcpOAuthError = (errorMessage: string) => {
+    setNeedsGcpOAuth(false);
+    setError(`GCP authentication error: ${errorMessage}`);
   };
 
   // Render current step content
@@ -312,7 +264,10 @@ export default function Onboarding() {
             <p className="mb-4">
               We need your permission to access your Google Cloud projects. This lets us show only your projects and manage your VMs.
             </p>
-            <GCPOAuth />
+            <GCPOAuth 
+              onTokenReceived={handleGcpTokenReceived}
+              onError={handleGcpOAuthError}
+            />
           </div>
         )}
         

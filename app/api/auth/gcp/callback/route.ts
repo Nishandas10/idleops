@@ -94,44 +94,29 @@ export async function GET(request: NextRequest) {
       }
     );
 
-    // Extract the access token and id token
-    const { access_token, id_token } = tokenResponse.data;
+    // Extract both access token and refresh token
+    const { access_token, refresh_token } = tokenResponse.data;
 
-    // Decode the id_token to get user info (a simple way to verify the account)
-    if (id_token) {
-      try {
-        // Parse the JWT (this is a simple decode, not validation)
-        const parts = id_token.split(".");
-        const payload = JSON.parse(Buffer.from(parts[1], "base64").toString());
-
-        console.log("User authenticated with Google account:", payload.email);
-      } catch (err) {
-        console.error("Error decoding id_token:", err);
-      }
-    }
-
-    // Return an HTML page that sends the token to the opener window
+    // Return an HTML page that sends both tokens to the opener window
     return new Response(
       `
       <html>
         <head>
           <title>Authentication Successful</title>
           <script>
-            // Send the token back to the opener window
+            // Send both tokens back to the opener window
             window.opener.postMessage(
               { 
                 type: 'GCP_AUTH_SUCCESS', 
                 token: '${access_token}',
-                id_token: '${id_token || ""}'
+                refreshToken: '${refresh_token}'
               },
               window.location.origin
             );
-            // Auto-close after sending the message
-            setTimeout(() => window.close(), 1000);
           </script>
         </head>
         <body>
-          <p>Authentication successful! This window will close automatically.</p>
+          <p>Authentication successful! You can close this window.</p>
         </body>
       </html>
       `,
@@ -156,8 +141,6 @@ export async function GET(request: NextRequest) {
               { type: 'GCP_AUTH_ERROR', error: 'Error exchanging code for token' },
               window.location.origin
             );
-            // Auto-close after sending the message
-            setTimeout(() => window.close(), 1000);
           </script>
         </head>
         <body>

@@ -1,32 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
-import { initializeApp, FirebaseApp } from "firebase/app";
-import { getAuth, Auth } from "firebase/auth";
-import { getFirestore, Firestore } from "firebase/firestore";
+import { initializeApp, cert, getApps } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
+import { getFirestore, Firestore } from "firebase-admin/firestore";
 import { getVMStatus, updateVMStatus, VMStatus } from "@/lib/firebase/vmStatus";
 
-// Initialize Firebase
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
-};
+// Initialize Firebase Admin if not already initialized
+let adminApp;
+if (!getApps().length) {
+  try {
+    // Parse the service account JSON from environment variable
+    const serviceAccount = JSON.parse(
+      process.env.FIREBASE_SERVICE_ACCOUNT_KEY || "{}"
+    );
 
-// Initialize Firebase
-let app: FirebaseApp;
-let auth: Auth;
-let db: Firestore;
+    if (!serviceAccount.project_id) {
+      throw new Error("Invalid service account configuration");
+    }
 
-try {
-  app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
-  db = getFirestore(app);
-} catch (error) {
-  console.error("Firebase initialization error:", error);
+    adminApp = initializeApp({
+      credential: cert(serviceAccount),
+    });
+  } catch (error) {
+    console.error("Firebase Admin initialization error:", error);
+  }
+} else {
+  adminApp = getApps()[0];
 }
+
+const db: Firestore = getFirestore();
+const auth = getAuth();
 
 // GET handler - Get VM status
 export async function GET(request: NextRequest) {
@@ -89,10 +91,16 @@ export async function POST(request: NextRequest) {
     // Extract the token
     const idToken = authHeader.substring(7);
 
-    // Verify the token and get user ID
-    // In a real app, you would verify this token with Firebase Admin SDK
-    // For now, we'll assume the token contains the user ID directly
-    const userId = idToken; // This is a simplification
+    // Verify the token with Firebase Admin
+    const decodedToken = await auth.verifyIdToken(idToken);
+    const userId = decodedToken.uid;
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: "User ID not found in token" },
+        { status: 401 }
+      );
+    }
 
     // Get the status data from the request body
     const data = await request.json();
