@@ -25,6 +25,7 @@ interface VMStatus {
   lastUpdated: string;
   autoHibernate: boolean;
   cpuUsage?: number;
+  userId: string;
 }
 
 interface CostSavingsData {

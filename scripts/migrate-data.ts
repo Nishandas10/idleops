@@ -17,6 +17,7 @@ interface VMInstance {
   lastActive: string;
   lastUpdated: string | Date | FirebaseFirestore.FieldValue;
   cpuUsage?: number;
+  userId: string;
 }
 
 interface UserData {
@@ -133,6 +134,7 @@ async function migrate() {
           ...(typeof data.cpuUsage === "number"
             ? { cpuUsage: data.cpuUsage }
             : {}),
+          userId: userForKnownInstance,
         };
 
         docsToDelete.push(docId);
@@ -188,6 +190,7 @@ async function migrate() {
       lastActive: data.lastActive || new Date().toISOString(),
       lastUpdated: FieldValue.serverTimestamp(),
       ...(typeof data.cpuUsage === "number" ? { cpuUsage: data.cpuUsage } : {}),
+      userId,
     };
 
     // Mark for deletion since it will be migrated to the user document

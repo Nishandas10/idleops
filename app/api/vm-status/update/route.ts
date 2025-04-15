@@ -59,6 +59,7 @@ export async function POST(request: NextRequest) {
       lastActive: data.lastActive || new Date().toISOString(),
       lastUpdated: new Date().toISOString(),
       cpuUsage: data.cpuUsage,
+      userId: data.userId,
     };
 
     // Update VM status in Firestore

@@ -67,6 +67,7 @@ interface VMStatus {
   lastActive: Date | string;
   lastUpdated: Date | string;
   cpuUsage?: number;
+  userId: string;
 }
 
 // Add an interface for Firestore timestamp
