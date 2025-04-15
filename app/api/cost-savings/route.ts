@@ -4,6 +4,9 @@ import { GoogleAuth } from "google-auth-library";
 import axios from "axios";
 import { getFirestore, DocumentData } from "firebase-admin/firestore";
 import { initializeApp, cert, getApps } from "firebase-admin/app";
+import { getStorage as getAdminStorage } from "firebase-admin/storage";
+import * as fs from "fs";
+import * as path from "path";
 
 // Types
 interface VMInstance {
@@ -56,10 +59,20 @@ interface CostSummary {
 // Initialize Firebase Admin (if not already initialized)
 if (!getApps().length) {
   try {
-    // Parse the service account JSON from environment variable
-    const serviceAccount = JSON.parse(
-      process.env.FIREBASE_SERVICE_ACCOUNT_KEY || "{}"
-    );
+    // Parse the service account JSON from environment variable or file
+    let serviceAccount;
+    try {
+      // First try to use the environment variable
+      serviceAccount = JSON.parse(
+        process.env.FIREBASE_SERVICE_ACCOUNT_KEY || "{}"
+      );
+    } catch (e) {
+      // If environment variable isn't set or is invalid, try to read from file
+      const serviceAccountPath =
+        process.env.FIREBASE_CREDENTIALS ||
+        "idleops-85936-firebase-adminsdk-fbsvc-7b5ff2eda9.json";
+      serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, "utf8"));
+    }
 
     if (!serviceAccount.project_id) {
       throw new Error("Invalid service account configuration");
@@ -67,7 +80,7 @@ if (!getApps().length) {
 
     initializeApp({
       credential: cert(serviceAccount),
-      storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+      storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
     });
   } catch (error) {
     console.error("Firebase initialization error:", error);
@@ -75,23 +88,78 @@ if (!getApps().length) {
 }
 
 const db = getFirestore();
+const adminStorage = getAdminStorage();
 
 export async function GET() {
   try {
-    // Get GCP service account credentials from environment variable
-    const credentials = JSON.parse(process.env.GCP_SERVICE_ACCOUNT_KEY || "{}");
+    // Get GCP service account credentials
+    const keyFilePath =
+      process.env.GOOGLE_APPLICATION_CREDENTIALS || "service-account-key.json";
+    let keyExists = false;
 
-    if (!credentials.project_id) {
+    try {
+      // Check if the key file exists
+      fs.accessSync(keyFilePath, fs.constants.R_OK);
+      keyExists = true;
+    } catch (error) {
+      console.log("Service account key file doesn't exist or is not readable");
+
+      // Try to create the key file from environment variable
+      try {
+        const serviceAccountKey = process.env.GCP_SERVICE_ACCOUNT_KEY;
+        if (serviceAccountKey) {
+          fs.writeFileSync(keyFilePath, serviceAccountKey);
+          keyExists = true;
+        }
+      } catch (writeError) {
+        console.error(
+          "Error writing service account key from env variable:",
+          writeError
+        );
+      }
+
+      // If still doesn't exist, try to fetch from Firebase Storage
+      if (!keyExists) {
+        try {
+          const bucket = adminStorage.bucket();
+          const [files] = await bucket.getFiles({
+            prefix: "users/",
+          });
+
+          let serviceAccountFile;
+          for (const file of files) {
+            if (
+              file.name.includes("service-accounts") &&
+              file.name.endsWith("key.json")
+            ) {
+              serviceAccountFile = file;
+              break;
+            }
+          }
+
+          if (serviceAccountFile) {
+            const [fileContent] = await serviceAccountFile.download();
+            fs.writeFileSync(keyFilePath, fileContent);
+            keyExists = true;
+            console.log(
+              "Successfully fetched GCP credentials from Firebase Storage"
+            );
+          }
+        } catch (fbError) {
+          console.error("Error fetching from Firebase Storage:", fbError);
+        }
+      }
+    }
+
+    if (!keyExists) {
       throw new Error("Invalid GCP service account configuration");
     }
 
-    // 1. Get GCP VM Instances
-    const auth = new GoogleAuth({
-      credentials,
-      scopes: ["https://www.googleapis.com/auth/compute.readonly"],
-    });
+    // Set the environment variable for Google libraries to use
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = keyFilePath;
 
-    const instancesClient = new InstancesClient({ auth });
+    // Create the instances client without specifying auth (it will use the env var)
+    const instancesClient = new InstancesClient();
 
     // Function to get all instances from a project across all zones
     const getAllInstances = async (): Promise<VMInstance[]> => {
@@ -102,7 +170,7 @@ export async function GET() {
         `https://compute.googleapis.com/compute/v1/projects/${process.env.GCP_PROJECT_ID}/zones`,
         {
           headers: {
-            Authorization: `Bearer ${await auth.getAccessToken()}`,
+            Authorization: `Bearer ${await new GoogleAuth().getAccessToken()}`,
           },
         }
       );

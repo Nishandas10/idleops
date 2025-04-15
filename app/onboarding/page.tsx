@@ -60,6 +60,7 @@ export default function Onboarding() {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [serviceAccountKeyUploaded, setServiceAccountKeyUploaded] = useState<boolean>(false);
 
   // Reset error when changing steps
   useEffect(() => {
@@ -142,6 +143,12 @@ export default function Onboarding() {
     }
   };
 
+  // Handle instances view completion
+  const handleInstancesViewComplete = (keyUploaded: boolean) => {
+    setServiceAccountKeyUploaded(keyUploaded);
+    setCurrentStep(OnboardingStep.COMPLETE);
+  };
+
   // Complete onboarding process
   const completeOnboarding = async () => {
     try {
@@ -156,6 +163,7 @@ export default function Onboarding() {
           gcpConnected: true,
           selectedProject: selectedProject,
           onboardingCompleted: true,
+          serviceAccountKeyUploaded: serviceAccountKeyUploaded,
           updatedAt: new Date().toISOString()
         };
         
@@ -200,7 +208,7 @@ export default function Onboarding() {
             instances={instances} 
             isLoading={loading}
             projectId={selectedProject!}
-            onComplete={() => setCurrentStep(OnboardingStep.COMPLETE)} 
+            onComplete={(keyUploaded) => handleInstancesViewComplete(keyUploaded)} 
           />
         );
       
@@ -208,7 +216,12 @@ export default function Onboarding() {
         return (
           <div className="text-center p-8">
             <h2 className="text-2xl font-bold mb-4">Onboarding Complete!</h2>
-            <p className="mb-6">You&apos;ve successfully connected your GCP account and selected your project.</p>
+            <p className="mb-6">
+              You&apos;ve successfully connected your GCP account and selected your project.
+              {serviceAccountKeyUploaded 
+                ? ' We will now be able to manage your VM instances automatically with your provided service account key.'
+                : ' Note: Since you didn\'t upload a service account key, some features that manage VMs will be limited.'}
+            </p>
             <button
               onClick={completeOnboarding}
               className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"

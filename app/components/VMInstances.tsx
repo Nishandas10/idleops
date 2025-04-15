@@ -3,10 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { InstanceStatus } from '@/components/ui/instance-status';
-// Import Firebase and Firestore functionality
-import { initializeApp, FirebaseApp } from 'firebase/app';
-import { getFirestore, onSnapshot, collection, query, doc, updateDoc, Firestore } from 'firebase/firestore';
-import { getAuth, onAuthStateChanged, Auth, User } from 'firebase/auth';
+// Import our new centralized Firebase configuration
+import firebase from '@/lib/firebase/config';
+import { User } from 'firebase/auth';
 import { listenToAllVMStatusChanges, VMStatus, updateVMStatus } from '@/lib/firebase/vmStatus';
 
 interface VMInstance {
@@ -84,30 +83,6 @@ function LabelModal({ instance, isOpen, onClose, onSave }: LabelModalProps) {
   );
 }
 
-// Firebase configuration
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
-};
-
-// Initialize Firebase
-let app: FirebaseApp;
-let db: Firestore;
-let auth: Auth;
-
-try {
-  app = initializeApp(firebaseConfig);
-  db = getFirestore(app);
-  auth = getAuth(app);
-} catch (error) {
-  console.error("Firebase initialization error:", error);
-}
-
 export default function VMInstances() {
   const router = useRouter();
   const [instances, setInstances] = useState<VMInstance[]>([]);
@@ -122,7 +97,8 @@ export default function VMInstances() {
 
   // Listen for auth state changes
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const auth = firebase.auth();
+    const unsubscribe = auth.onAuthStateChanged((user) => {
       setCurrentUser(user);
     });
     
@@ -131,13 +107,16 @@ export default function VMInstances() {
 
   useEffect(() => {
     // Set up listener for VM status changes
-    if (db) {
+    if (currentUser) {
+      console.log("Setting up VM status listener for authenticated user");
+      const db = firebase.firestore();
       const unsubscribe = listenToAllVMStatusChanges(db, (statuses) => {
-        // Convert array of statuses to a record for easier lookup
-        const statusMap: Record<string, VMStatus> = {};
-        statuses.forEach(status => {
-          statusMap[status.instanceId] = status;
-        });
+        // Create a map of instance ID to status
+        const statusMap = statuses.reduce((map, status) => {
+          map[status.instanceId] = status;
+          return map;
+        }, {} as Record<string, VMStatus>);
+        
         setVmStatuses(statusMap);
         
         // Update instances with the latest VM status information
@@ -165,7 +144,7 @@ export default function VMInstances() {
       
       return () => unsubscribe();
     }
-  }, [db]);
+  }, [currentUser]);
 
   useEffect(() => {
     // Load saved environments from localStorage
@@ -273,7 +252,7 @@ export default function VMInstances() {
     
     try {
       // Update in Firestore
-      if (db && currentUser) {
+      if (firebase.firestore() && currentUser) {
         // Use the VM status data if available, otherwise create a basic one
         const vmStatus = vmStatuses[instanceId] || {
           instanceId,
@@ -285,7 +264,7 @@ export default function VMInstances() {
         };
         
         // Update with new autoHibernate value
-        await updateVMStatus(db, {
+        await updateVMStatus(firebase.firestore(), {
           ...vmStatus,
           autoHibernate: newAutoHibernate
         });

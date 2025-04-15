@@ -33,8 +33,8 @@ export const updateVMStatus = async (
   vmStatus: VMStatus
 ): Promise<void> => {
   try {
-    // Create document reference
-    const docRef = doc(db, "vm_status", vmStatus.instanceId);
+    // Create document reference - using vmStatus collection consistently
+    const docRef = doc(db, "vmStatus", vmStatus.instanceId);
 
     // Check if document exists
     const docSnap = await getDoc(docRef);
@@ -80,7 +80,7 @@ export const listenToVMStatusChanges = (
   instanceId: string,
   callback: (status: VMStatus) => void
 ) => {
-  const docRef = doc(db, "vm_status", instanceId);
+  const docRef = doc(db, "vmStatus", instanceId);
 
   return onSnapshot(
     docRef,
@@ -103,7 +103,7 @@ export const listenToAllVMStatusChanges = (
   db: Firestore,
   callback: (statuses: VMStatus[]) => void
 ) => {
-  const vmStatusRef = collection(db, "vm_status");
+  const vmStatusRef = collection(db, "vmStatus");
 
   return onSnapshot(
     vmStatusRef,
@@ -128,7 +128,7 @@ export const getVMStatus = async (
   instanceId: string
 ): Promise<VMStatus | null> => {
   try {
-    const docRef = doc(db, "vm_status", instanceId);
+    const docRef = doc(db, "vmStatus", instanceId);
     const docSnap = await getDoc(docRef);
 
     if (docSnap.exists()) {

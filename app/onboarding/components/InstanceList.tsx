@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import ServiceAccountKeyUpload from '../../components/ServiceAccountKeyUpload';
 
 interface Instance {
   id: string;
@@ -13,7 +14,7 @@ interface Instance {
 
 interface InstanceListProps {
   instances: Instance[];
-  onComplete: () => void;
+  onComplete: (serviceAccountKeyUploaded: boolean) => void;
   isLoading: boolean;
   projectId: string;
 }
@@ -21,6 +22,8 @@ interface InstanceListProps {
 export default function InstanceList({ instances, onComplete, isLoading, projectId }: InstanceListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   // Filter instances based on search query and status filter
   const filteredInstances = instances.filter(instance => {
@@ -69,6 +72,22 @@ export default function InstanceList({ instances, onComplete, isLoading, project
         {status}
       </span>
     );
+  };
+
+  // Handle upload events
+  const handleUploadSuccess = () => {
+    setUploadSuccess(true);
+    setUploadError(null);
+  };
+
+  const handleUploadError = (error: string) => {
+    setUploadError(error);
+    setUploadSuccess(false);
+  };
+
+  // Continue button handler
+  const handleComplete = () => {
+    onComplete(uploadSuccess);
   };
 
   return (
@@ -197,10 +216,18 @@ export default function InstanceList({ instances, onComplete, isLoading, project
         </div>
       )}
 
+      {/* Service Account Key Upload */}
+      <ServiceAccountKeyUpload 
+        projectId={projectId}
+        onUploadSuccess={handleUploadSuccess}
+        onUploadError={handleUploadError}
+        className="mb-6"
+      />
+
       {/* Continue button */}
       <div className="flex justify-end">
         <button
-          onClick={onComplete}
+          onClick={handleComplete}
           disabled={isLoading}
           className="px-6 py-2 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
         >
