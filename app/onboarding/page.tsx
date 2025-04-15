@@ -3,19 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import dynamic from 'next/dynamic';
 import ProjectSelection from './components/ProjectSelection';
 import InstanceList from './components/InstanceList';
 
-// Import GCPConnect component dynamically with SSR disabled
-const GCPConnect = dynamic(
-  () => import('./components/GCPConnect'),
-  { ssr: false } // This ensures the component only loads on the client side
-);
-
 // Onboarding steps
 enum OnboardingStep {
-  CONNECT_GCP,
   SELECT_PROJECT,
   VIEW_INSTANCES,
   COMPLETE
@@ -23,7 +15,7 @@ enum OnboardingStep {
 
 // Import Firebase
 import { initializeApp, FirebaseApp } from 'firebase/app';
-import { getAuth, onAuthStateChanged, Auth, User } from 'firebase/auth';
+import { getAuth, onAuthStateChanged, Auth, User, getIdToken } from 'firebase/auth';
 import { getFirestore, doc, updateDoc, Firestore, getDoc, setDoc } from 'firebase/firestore';
 
 // Initialize Firebase
@@ -52,7 +44,7 @@ try {
 
 export default function Onboarding() {
   const router = useRouter();
-  const [currentStep, setCurrentStep] = useState<OnboardingStep>(OnboardingStep.CONNECT_GCP);
+  const [currentStep, setCurrentStep] = useState<OnboardingStep>(OnboardingStep.SELECT_PROJECT);
   const [gcpToken, setGcpToken] = useState<string | null>(null);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [projects, setProjects] = useState<any[]>([]);
@@ -66,11 +58,37 @@ export default function Onboarding() {
     setError(null);
   }, [currentStep]);
 
-  // Check for authenticated user
+  // Check for authenticated user and get the token
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user: User | null) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user: User | null) => {
       if (user) {
         setCurrentUser(user);
+        try {
+          // Get the ID token from Firebase Auth
+          const firebaseToken = await getIdToken(user);
+          
+          // Exchange Firebase token for GCP token
+          const response = await fetch('/api/auth/gcp/token', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${firebaseToken}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (!response.ok) {
+            throw new Error('Failed to get GCP token');
+          }
+          
+          const data = await response.json();
+          setGcpToken(data.token);
+          
+          // Fetch projects with the GCP token
+          fetchProjects(data.token);
+        } catch (err) {
+          setError('Failed to get authentication token. Please try again.');
+          console.error('Auth error:', err);
+        }
       } else {
         // Not logged in, redirect to auth page
         router.push('/auth');
@@ -79,13 +97,6 @@ export default function Onboarding() {
 
     return () => unsubscribe();
   }, [router]);
-
-  // Handle GCP authentication completion
-  const handleGCPConnected = (token: string) => {
-    setGcpToken(token);
-    fetchProjects(token);
-    setCurrentStep(OnboardingStep.SELECT_PROJECT);
-  };
 
   // Fetch projects from GCP
   const fetchProjects = async (token: string) => {
@@ -182,9 +193,6 @@ export default function Onboarding() {
   // Render current step content
   const renderStepContent = () => {
     switch (currentStep) {
-      case OnboardingStep.CONNECT_GCP:
-        return <GCPConnect onConnected={handleGCPConnected} />;
-      
       case OnboardingStep.SELECT_PROJECT:
         return (
           <ProjectSelection 
@@ -231,7 +239,6 @@ export default function Onboarding() {
         {/* Progress indicator */}
         <div className="flex items-center mb-8">
           {[
-            { step: OnboardingStep.CONNECT_GCP, label: 'Connect GCP' },
             { step: OnboardingStep.SELECT_PROJECT, label: 'Select Project' },
             { step: OnboardingStep.VIEW_INSTANCES, label: 'View Instances' },
             { step: OnboardingStep.COMPLETE, label: 'Complete' },
@@ -251,7 +258,7 @@ export default function Onboarding() {
               >
                 {item.label}
               </div>
-              {index < 3 && (
+              {index < 2 && (
                 <div 
                   className={`w-12 h-1 mx-2 ${
                     currentStep > item.step ? 'bg-blue-600' : 'bg-gray-200'
