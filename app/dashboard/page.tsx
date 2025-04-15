@@ -87,8 +87,8 @@ export default function Dashboard() {
           setIsLoading(false);
         }
       } else {
-        // Not authenticated, redirect to sign in
-        window.location.href = '/auth/signin';
+        // Not authenticated, redirect to auth page
+        window.location.href = '/auth';
       }
     });
     

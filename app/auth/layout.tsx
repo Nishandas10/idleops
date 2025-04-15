@@ -12,8 +12,11 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
             </h1>
           </Link>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Welcome Back
+            Account Access
           </h2>
+          <p className="mt-2 text-center text-sm text-gray-600">
+            Access your IdleOps account to manage your cloud resources
+          </p>
         </div>
         {children}
       </div>

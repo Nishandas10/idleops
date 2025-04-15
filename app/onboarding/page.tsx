@@ -72,8 +72,8 @@ export default function Onboarding() {
       if (user) {
         setCurrentUser(user);
       } else {
-        // Not logged in, redirect to sign in
-        router.push('/auth/signin');
+        // Not logged in, redirect to auth page
+        router.push('/auth');
       }
     });
 

@@ -13,9 +13,6 @@ import {
   Firestore,
   DocumentData,
   QuerySnapshot,
-  getDocsFromServer,
-  getDocs,
-  collectionGroup,
 } from "firebase/firestore";
 
 export interface VMStatus {
@@ -26,11 +23,16 @@ export interface VMStatus {
   lastActive: Date | string;
   lastUpdated: Date | string;
   cpuUsage?: number;
+  userId: string;
+}
+
+interface UserVMStatuses {
+  [instanceId: string]: VMStatus;
 }
 
 /**
  * Updates VM status in Firestore
- * Now organized by userId/instanceId structure
+ * Now organized by userId document containing all VM instances
  */
 export const updateVMStatus = async (
   db: Firestore,
@@ -38,20 +40,15 @@ export const updateVMStatus = async (
   userId: string
 ): Promise<void> => {
   try {
-    // Create document reference with user ID in the path
-    const docRef = doc(
-      db,
-      "vm_status",
-      userId,
-      "instances",
-      vmStatus.instanceId
-    );
+    // Create document reference for the user
+    const docRef = doc(db, "vm_status", userId);
 
     // Check if document exists
     const docSnap = await getDoc(docRef);
 
     const statusData = {
       ...vmStatus,
+      userId,
       lastUpdated: serverTimestamp(),
       // Make sure lastActive is a properly formatted timestamp if it's a Date
       lastActive:
@@ -61,20 +58,18 @@ export const updateVMStatus = async (
     };
 
     if (docSnap.exists()) {
-      // Only update if status has changed
-      const currentData = docSnap.data() as VMStatus;
-
-      if (
-        currentData.status !== vmStatus.status ||
-        currentData.autoHibernate !== vmStatus.autoHibernate ||
-        currentData.cpuUsage !== vmStatus.cpuUsage
-      ) {
-        await updateDoc(docRef, statusData);
-        console.log(`Updated status for VM: ${vmStatus.instanceId}`);
-      }
+      // Update the specific instance in the user's document
+      await updateDoc(docRef, {
+        [`instances.${vmStatus.instanceId}`]: statusData,
+      });
+      console.log(`Updated status for VM: ${vmStatus.instanceId}`);
     } else {
-      // Document doesn't exist, create it
-      await setDoc(docRef, statusData);
+      // Document doesn't exist, create it with the first instance
+      await setDoc(docRef, {
+        instances: {
+          [vmStatus.instanceId]: statusData,
+        },
+      });
       console.log(`Created status entry for VM: ${vmStatus.instanceId}`);
     }
   } catch (error) {
@@ -92,14 +87,17 @@ export const listenToVMStatusChanges = (
   userId: string,
   callback: (status: VMStatus) => void
 ) => {
-  const docRef = doc(db, "vm_status", userId, "instances", instanceId);
+  const docRef = doc(db, "vm_status", userId);
 
   return onSnapshot(
     docRef,
     (docSnap) => {
       if (docSnap.exists()) {
-        const data = docSnap.data() as VMStatus;
-        callback(data);
+        const data = docSnap.data();
+        const instanceData = data.instances?.[instanceId];
+        if (instanceData) {
+          callback(instanceData as VMStatus);
+        }
       }
     },
     (error) => {
@@ -116,16 +114,19 @@ export const listenToUserVMStatusChanges = (
   userId: string,
   callback: (statuses: VMStatus[]) => void
 ) => {
-  const vmStatusRef = collection(db, "vm_status", userId, "instances");
+  const docRef = doc(db, "vm_status", userId);
 
   return onSnapshot(
-    vmStatusRef,
-    (snapshot: QuerySnapshot<DocumentData>) => {
-      const statuses: VMStatus[] = [];
-      snapshot.forEach((doc) => {
-        statuses.push(doc.data() as VMStatus);
-      });
-      callback(statuses);
+    docRef,
+    (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        const instances = data.instances || {};
+        const statuses = Object.values(instances) as VMStatus[];
+        callback(statuses);
+      } else {
+        callback([]);
+      }
     },
     (error) => {
       console.error(
@@ -138,20 +139,23 @@ export const listenToUserVMStatusChanges = (
 
 /**
  * Listen for status changes across all VM instances (admin function)
- * This is kept for backward compatibility and admin purposes
  */
 export const listenToAllVMStatusChanges = (
   db: Firestore,
   callback: (statuses: VMStatus[]) => void
 ) => {
-  const vmStatusRef = collectionGroup(db, "instances");
+  const vmStatusRef = collection(db, "vm_status");
 
   return onSnapshot(
     vmStatusRef,
     (snapshot: QuerySnapshot<DocumentData>) => {
       const statuses: VMStatus[] = [];
       snapshot.forEach((doc) => {
-        statuses.push(doc.data() as VMStatus);
+        const data = doc.data();
+        const instances = data.instances || {};
+        Object.values(instances).forEach((instance) => {
+          statuses.push(instance as VMStatus);
+        });
       });
       callback(statuses);
     },
@@ -170,11 +174,15 @@ export const getVMStatus = async (
   userId: string
 ): Promise<VMStatus | null> => {
   try {
-    const docRef = doc(db, "vm_status", userId, "instances", instanceId);
+    const docRef = doc(db, "vm_status", userId);
     const docSnap = await getDoc(docRef);
 
     if (docSnap.exists()) {
-      return docSnap.data() as VMStatus;
+      const data = docSnap.data();
+      const instanceData = data.instances?.[instanceId];
+      if (instanceData) {
+        return instanceData as VMStatus;
+      }
     }
 
     return null;
@@ -192,15 +200,16 @@ export const getUserVMStatuses = async (
   userId: string
 ): Promise<VMStatus[]> => {
   try {
-    const vmStatusRef = collection(db, "vm_status", userId, "instances");
-    const snapshot = await getDocs(vmStatusRef);
+    const docRef = doc(db, "vm_status", userId);
+    const docSnap = await getDoc(docRef);
 
-    const statuses: VMStatus[] = [];
-    snapshot.forEach((doc) => {
-      statuses.push(doc.data() as VMStatus);
-    });
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      const instances = data.instances || {};
+      return Object.values(instances) as VMStatus[];
+    }
 
-    return statuses;
+    return [];
   } catch (error) {
     console.error(`Error getting VM statuses for user ${userId}:`, error);
     throw error;
