@@ -94,8 +94,21 @@ export async function GET(request: NextRequest) {
       }
     );
 
-    // Extract the access token
-    const { access_token } = tokenResponse.data;
+    // Extract the access token and id token
+    const { access_token, id_token } = tokenResponse.data;
+
+    // Decode the id_token to get user info (a simple way to verify the account)
+    if (id_token) {
+      try {
+        // Parse the JWT (this is a simple decode, not validation)
+        const parts = id_token.split(".");
+        const payload = JSON.parse(Buffer.from(parts[1], "base64").toString());
+
+        console.log("User authenticated with Google account:", payload.email);
+      } catch (err) {
+        console.error("Error decoding id_token:", err);
+      }
+    }
 
     // Return an HTML page that sends the token to the opener window
     return new Response(
@@ -106,13 +119,19 @@ export async function GET(request: NextRequest) {
           <script>
             // Send the token back to the opener window
             window.opener.postMessage(
-              { type: 'GCP_AUTH_SUCCESS', token: '${access_token}' },
+              { 
+                type: 'GCP_AUTH_SUCCESS', 
+                token: '${access_token}',
+                id_token: '${id_token || ""}'
+              },
               window.location.origin
             );
+            // Auto-close after sending the message
+            setTimeout(() => window.close(), 1000);
           </script>
         </head>
         <body>
-          <p>Authentication successful! You can close this window.</p>
+          <p>Authentication successful! This window will close automatically.</p>
         </body>
       </html>
       `,
@@ -137,6 +156,8 @@ export async function GET(request: NextRequest) {
               { type: 'GCP_AUTH_ERROR', error: 'Error exchanging code for token' },
               window.location.origin
             );
+            // Auto-close after sending the message
+            setTimeout(() => window.close(), 1000);
           </script>
         </head>
         <body>
