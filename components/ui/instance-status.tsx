@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Badge } from "./badge";
 import { initializeApp, FirebaseApp } from 'firebase/app';
 import { getFirestore, Firestore } from 'firebase/firestore';
-import { getAuth, Auth } from 'firebase/auth';
+import { getAuth, Auth, onAuthStateChanged } from 'firebase/auth';
 import { listenToVMStatusChanges, VMStatus, updateVMStatus } from "@/lib/firebase/vmStatus";
 
 interface InstanceStatusProps {
@@ -61,6 +61,15 @@ export function InstanceStatus({
     const [lastNotificationTime, setLastNotificationTime] = useState<Date | null>(null);
     const [vmStatus, setVmStatus] = useState<VMStatus | null>(null);
     const [refreshInterval, setRefreshInterval] = useState<number>(10000); // Start with 10 seconds refresh
+    const [currentUser, setCurrentUser] = useState<any>(null);
+
+    // Add auth state listener
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+            setCurrentUser(user);
+        });
+        return () => unsubscribe();
+    }, []);
 
     const handleHibernate = async () => {
         try {
@@ -115,7 +124,7 @@ export function InstanceStatus({
                     setMetrics(data.metrics);
                     
                     // Update Firestore with latest metrics data if available
-                    if (db && data.metrics.length > 0) {
+                    if (db && data.metrics.length > 0 && currentUser) {
                         const latestMetric = data.metrics[data.metrics.length - 1];
                         const isIdle = latestMetric.cpu < 50;
                         
@@ -134,7 +143,7 @@ export function InstanceStatus({
                                 lastActive: new Date(timestamp),
                                 cpuUsage: latestMetric.cpu,
                                 lastUpdated: new Date()
-                            });
+                            }, currentUser.uid);
                         }
                         
                         // Adjust refresh interval based on activity
@@ -158,20 +167,20 @@ export function InstanceStatus({
         // Dynamic refresh interval
         const interval = setInterval(fetchMetrics, refreshInterval);
         return () => clearInterval(interval);
-    }, [instanceId, refreshInterval, db, vmStatus]);
+    }, [instanceId, refreshInterval, db, vmStatus, currentUser]);
 
     // Listen for VM status changes from Firestore
     useEffect(() => {
-        if (!db || !instanceId) return;
+        if (!db || !instanceId || !currentUser) return;
         
-        const unsubscribe = listenToVMStatusChanges(db, instanceId, (status) => {
+        const unsubscribe = listenToVMStatusChanges(db, instanceId, currentUser.uid, (status) => {
             setVmStatus(status);
             // If status data is loaded, we can end loading state
             setLoading(false);
         });
         
         return () => unsubscribe();
-    }, [db, instanceId]);
+    }, [db, instanceId, currentUser]);
 
     useEffect(() => {
         // Skip if autoHibernate is off or we don't have status data
