@@ -23,7 +23,7 @@ const Home: NextPage = () => {
                 Welcome to IdleOps
               </h1>
               <p className="mt-6 text-lg leading-8 text-gray-600">
-                Intelligent VM management that saves costs. Automatically detect and hibernate idle instances while maintaining full control over your cloud infrastructure.
+                Intelligent VM management that saves costs. Automatically detect and hibernate idle instances while maintaining full control over your cloud infra.
               </p>
               <div className="mt-10 flex items-center justify-center gap-x-6">
                 <Link
