@@ -55,7 +55,6 @@ export default function InstanceDashboard({ instanceId, instanceName }: Instance
   // Handle data fetching
   useEffect(() => {
     let isMounted = true;
-    let interval: NodeJS.Timeout;
     let retryCount = 0;
     const MAX_RETRIES = 3;
     const RETRY_DELAY = 5000; // 5 seconds
@@ -144,7 +143,7 @@ export default function InstanceDashboard({ instanceId, instanceName }: Instance
     console.log("Starting metrics fetch cycle for instance:", instanceId);
     fetchMetrics();
     // Fetch every minute
-    interval = setInterval(fetchMetrics, 60 * 1000);
+    const interval = setInterval(fetchMetrics, 60 * 1000);
     
     return () => {
       console.log("Cleaning up instance dashboard for instance:", instanceId);
