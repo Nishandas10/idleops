@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Extract the token
+    // Extract the token - this is the user's GCP OAuth token
     const token = authHeader.substring(7);
 
     // Get the project ID from the query parameter
@@ -124,7 +124,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(
       {
-        error: "Failed to fetch VM instances",
+        error: "Failed to fetch GCP instances",
         details: error instanceof Error ? error.message : String(error),
       },
       { status: 500 }

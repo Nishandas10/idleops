@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Extract the token
+    // Extract the token - this is the user's GCP OAuth token
     const token = authHeader.substring(7);
 
     // Call the GCP Resource Manager API to list projects

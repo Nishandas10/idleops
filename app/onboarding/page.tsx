@@ -5,6 +5,10 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import ProjectSelection from './components/ProjectSelection';
 import InstanceList from './components/InstanceList';
+import dynamic from 'next/dynamic';
+
+// Dynamically import the GCPOAuth component
+const GCPOAuth = dynamic(() => import('./components/GCPOAuth'), { ssr: false });
 
 // Onboarding steps
 enum OnboardingStep {
@@ -52,6 +56,7 @@ export default function Onboarding() {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [needsGcpOAuth, setNeedsGcpOAuth] = useState<boolean>(false);
 
   // Reset error when changing steps
   useEffect(() => {
@@ -67,7 +72,7 @@ export default function Onboarding() {
           // Get the ID token from Firebase Auth
           const firebaseToken = await getIdToken(user);
           
-          // Exchange Firebase token for GCP token
+          // Try to exchange Firebase token for GCP token
           const response = await fetch('/api/auth/gcp/token', {
             method: 'POST',
             headers: {
@@ -76,15 +81,18 @@ export default function Onboarding() {
             }
           });
           
-          if (!response.ok) {
-            throw new Error('Failed to get GCP token');
-          }
-          
           const data = await response.json();
-          setGcpToken(data.token);
           
-          // Fetch projects with the GCP token
-          fetchProjects(data.token);
+          if (response.ok && data.token) {
+            // If we got a token directly, use it
+            setGcpToken(data.token);
+            fetchProjects(data.token);
+          } else if (data.needsOAuth) {
+            // If we need to perform OAuth, set the flag
+            setNeedsGcpOAuth(true);
+          } else {
+            throw new Error(data.error || 'Failed to get GCP token');
+          }
         } catch (err) {
           setError('Failed to get authentication token. Please try again.');
           console.error('Auth error:', err);
@@ -190,6 +198,19 @@ export default function Onboarding() {
     }
   };
 
+  // Handle receiving a GCP token from OAuth
+  const handleGcpTokenReceived = (token: string) => {
+    setNeedsGcpOAuth(false);
+    setGcpToken(token);
+    fetchProjects(token);
+  };
+  
+  // Handle OAuth error
+  const handleGcpOAuthError = (errorMessage: string) => {
+    setNeedsGcpOAuth(false);
+    setError(`GCP authentication error: ${errorMessage}`);
+  };
+
   // Render current step content
   const renderStepContent = () => {
     switch (currentStep) {
@@ -236,38 +257,54 @@ export default function Onboarding() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-4">Set Up IdleOps</h1>
         
+        {/* Show OAuth prompt when needed */}
+        {needsGcpOAuth && (
+          <div className="mb-8 p-4 bg-blue-50 border border-blue-200 rounded-md">
+            <h3 className="font-medium mb-2">Connecting to Google Cloud</h3>
+            <p className="mb-4">
+              We need your permission to access your Google Cloud projects. This lets us show only your projects and manage your VMs.
+            </p>
+            <GCPOAuth 
+              onTokenReceived={handleGcpTokenReceived}
+              onError={handleGcpOAuthError}
+            />
+          </div>
+        )}
+        
         {/* Progress indicator */}
-        <div className="flex items-center mb-8">
-          {[
-            { step: OnboardingStep.SELECT_PROJECT, label: 'Select Project' },
-            { step: OnboardingStep.VIEW_INSTANCES, label: 'View Instances' },
-            { step: OnboardingStep.COMPLETE, label: 'Complete' },
-          ].map((item, index) => (
-            <div key={index} className="flex items-center">
-              <div 
-                className={`rounded-full w-8 h-8 flex items-center justify-center ${
-                  currentStep >= item.step ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
-                }`}
-              >
-                {index + 1}
-              </div>
-              <div 
-                className={`ml-2 ${
-                  currentStep >= item.step ? 'text-blue-600 font-medium' : 'text-gray-500'
-                }`}
-              >
-                {item.label}
-              </div>
-              {index < 2 && (
+        {!needsGcpOAuth && (
+          <div className="flex items-center mb-8">
+            {[
+              { step: OnboardingStep.SELECT_PROJECT, label: 'Select Project' },
+              { step: OnboardingStep.VIEW_INSTANCES, label: 'View Instances' },
+              { step: OnboardingStep.COMPLETE, label: 'Complete' },
+            ].map((item, index) => (
+              <div key={index} className="flex items-center">
                 <div 
-                  className={`w-12 h-1 mx-2 ${
-                    currentStep > item.step ? 'bg-blue-600' : 'bg-gray-200'
+                  className={`rounded-full w-8 h-8 flex items-center justify-center ${
+                    currentStep >= item.step ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
                   }`}
-                />
-              )}
-            </div>
-          ))}
-        </div>
+                >
+                  {index + 1}
+                </div>
+                <div 
+                  className={`ml-2 ${
+                    currentStep >= item.step ? 'text-blue-600 font-medium' : 'text-gray-500'
+                  }`}
+                >
+                  {item.label}
+                </div>
+                {index < 2 && (
+                  <div 
+                    className={`w-12 h-1 mx-2 ${
+                      currentStep > item.step ? 'bg-blue-600' : 'bg-gray-200'
+                    }`}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        )}
         
         {/* Error message */}
         {error && (
@@ -276,8 +313,8 @@ export default function Onboarding() {
           </div>
         )}
         
-        {/* Current step content */}
-        {renderStepContent()}
+        {/* Current step content - only show if we don't need OAuth */}
+        {!needsGcpOAuth && renderStepContent()}
       </div>
     </div>
   );

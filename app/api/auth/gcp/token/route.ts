@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { initializeApp, cert, getApps, App } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import { GoogleAuth } from "google-auth-library";
+import axios from "axios";
 
 // Initialize Firebase Admin if not already initialized
 let adminApp: App;
@@ -26,6 +26,11 @@ if (!getApps().length) {
   adminApp = getApps()[0];
 }
 
+// Google OAuth config
+const GOOGLE_TOKEN_URL = "https://securetoken.googleapis.com/v1/token";
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID as string;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET as string;
+
 export async function POST(request: NextRequest) {
   try {
     // Get authorization header with Firebase ID token
@@ -43,8 +48,9 @@ export async function POST(request: NextRequest) {
 
     // Verify the Firebase token
     const auth = getAuth(adminApp);
+    let decodedToken;
     try {
-      await auth.verifyIdToken(firebaseToken);
+      decodedToken = await auth.verifyIdToken(firebaseToken);
     } catch (error) {
       console.error("Invalid Firebase token:", error);
       return NextResponse.json(
@@ -53,32 +59,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get GCP service account credentials from environment variable
-    const credentials = JSON.parse(process.env.GCP_SERVICE_ACCOUNT_KEY || "{}");
+    // Get user info - we need this to access their Google account credentials
+    const userRecord = await auth.getUser(decodedToken.uid);
 
-    if (!credentials.project_id) {
-      throw new Error("Invalid GCP service account configuration");
+    // Check for Google provider data
+    const googleProvider = userRecord.providerData.find(
+      (provider) => provider.providerId === "google.com"
+    );
+
+    if (!googleProvider) {
+      return NextResponse.json(
+        { error: "User does not have a linked Google account" },
+        { status: 400 }
+      );
     }
 
-    // Create a Google Auth instance with the service account and necessary scopes
-    const googleAuth = new GoogleAuth({
-      credentials,
-      scopes: [
-        "https://www.googleapis.com/auth/cloud-platform",
-        "https://www.googleapis.com/auth/compute",
-        "https://www.googleapis.com/auth/compute.readonly",
-      ],
+    // For security reasons, we can't directly get the user's OAuth tokens from Firebase Auth
+    // Instead, we'll redirect the client to perform a proper OAuth flow
+
+    // Return a response indicating the client needs to perform an OAuth flow
+    return NextResponse.json({
+      needsOAuth: true,
+      message: "User needs to explicitly authorize GCP access",
     });
-
-    // Get an access token from the auth client
-    const accessToken = await googleAuth.getAccessToken();
-
-    if (!accessToken) {
-      throw new Error("Failed to get GCP access token");
-    }
-
-    // Return the token
-    return NextResponse.json({ token: accessToken });
   } catch (error) {
     console.error("Error getting GCP token:", error);
 
