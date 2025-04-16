@@ -327,51 +327,85 @@ export default function VMInstances() {
   // Add these functions to handle instance starting and stopping
   const handleHibernate = async (instanceId: string, zone: string) => {
     try {
+      if (!currentUser) {
+        throw new Error('User not authenticated');
+      }
+      
+      const projectId = process.env.NEXT_PUBLIC_GCP_PROJECT_ID;
+      if (!projectId) {
+        throw new Error('GCP Project ID not configured');
+      }
+
+      console.log('Stopping instance with params:', { instanceId, zone, projectId });
+      
+      // Get the ID token
+      const idToken = await currentUser.getIdToken();
+      
       const response = await fetch(`/api/instances/stop`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
         },
         body: JSON.stringify({
           instanceId,
           zone,
+          projectId,
         }),
       });
       
       if (!response.ok) {
-        throw new Error('Failed to stop instance');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to stop instance');
       }
       
       // Refresh the instances list
       fetchInstances();
     } catch (error) {
       console.error('Error stopping instance:', error);
-      setError('Failed to stop instance. Please try again.');
+      setError(error instanceof Error ? error.message : 'Failed to stop instance. Please try again.');
     }
   };
 
   const handleStart = async (instanceId: string, zone: string) => {
     try {
+      if (!currentUser) {
+        throw new Error('User not authenticated');
+      }
+      
+      const projectId = process.env.NEXT_PUBLIC_GCP_PROJECT_ID;
+      if (!projectId) {
+        throw new Error('GCP Project ID not configured');
+      }
+
+      console.log('Starting instance with params:', { instanceId, zone, projectId });
+      
+      // Get the ID token
+      const idToken = await currentUser.getIdToken();
+      
       const response = await fetch(`/api/instances/start`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
         },
         body: JSON.stringify({
           instanceId,
           zone,
+          projectId,
         }),
       });
       
       if (!response.ok) {
-        throw new Error('Failed to start instance');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to start instance');
       }
       
       // Refresh the instances list
       fetchInstances();
     } catch (error) {
       console.error('Error starting instance:', error);
-      setError('Failed to start instance. Please try again.');
+      setError(error instanceof Error ? error.message : 'Failed to start instance. Please try again.');
     }
   };
 
@@ -509,60 +543,14 @@ export default function VMInstances() {
                       </button>
                       {instance.status === 'RUNNING' ? (
                         <button
-                          onClick={async () => {
-                            try {
-                              const response = await fetch(`/api/instances/stop`, {
-                                method: 'POST',
-                                headers: {
-                                  'Content-Type': 'application/json',
-                                },
-                                body: JSON.stringify({
-                                  instanceId: instance.id,
-                                  zone: instance.zone,
-                                }),
-                              });
-                              
-                              if (!response.ok) {
-                                throw new Error('Failed to stop instance');
-                              }
-                              
-                              // Refresh the instances list
-                              fetchInstances();
-                            } catch (error) {
-                              console.error('Error stopping instance:', error);
-                              setError('Failed to stop instance. Please try again.');
-                            }
-                          }}
+                          onClick={() => handleHibernate(instance.id, instance.zone)}
                           className="px-3 py-1.5 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors duration-200 text-left"
                         >
                           Stop
                         </button>
                       ) : instance.status === 'TERMINATED' ? (
                         <button
-                          onClick={async () => {
-                            try {
-                              const response = await fetch(`/api/instances/start`, {
-                                method: 'POST',
-                                headers: {
-                                  'Content-Type': 'application/json',
-                                },
-                                body: JSON.stringify({
-                                  instanceId: instance.id,
-                                  zone: instance.zone,
-                                }),
-                              });
-                              
-                              if (!response.ok) {
-                                throw new Error('Failed to start instance');
-                              }
-                              
-                              // Refresh the instances list
-                              fetchInstances();
-                            } catch (error) {
-                              console.error('Error starting instance:', error);
-                              setError('Failed to start instance. Please try again.');
-                            }
-                          }}
+                          onClick={() => handleStart(instance.id, instance.zone)}
                           className="px-3 py-1.5 bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors duration-200 text-left"
                         >
                           Start

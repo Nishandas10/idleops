@@ -206,7 +206,7 @@ export default function CostSavingsPage() {
           <BellIcon className="h-5 w-5 text-amber-600" />
           <AlertTitle className="text-amber-800">Savings Opportunity</AlertTitle>
           <AlertDescription className="text-amber-700">
-            You could save {formatCurrency(costData.potentialSavings)} per month by enabling auto-hibernation 
+            You could save {formatCurrency(8.25)} per month by enabling auto-hibernation 
             on your idle instances.
           </AlertDescription>
         </Alert>

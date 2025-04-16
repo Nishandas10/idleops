@@ -17,10 +17,22 @@ interface VMActionRequest {
 // Initialize Firebase Admin (if not already initialized)
 if (!getApps().length) {
   try {
-    // First try to use the environment variable
-    const serviceAccount = JSON.parse(
-      process.env.FIREBASE_SERVICE_ACCOUNT_KEY || "{}"
+    // Read service account directly from local file
+    const serviceAccountPath = path.join(
+      process.cwd(),
+      "idleops-85936-firebase-adminsdk-fbsvc-7b5ff2eda9.json"
     );
+    let serviceAccount;
+
+    try {
+      const rawData = fs.readFileSync(serviceAccountPath, "utf8");
+      serviceAccount = JSON.parse(rawData);
+    } catch (readError) {
+      console.error("Error reading service account file:", readError);
+      throw new Error(
+        "Could not read service account file. Please ensure the file exists at the correct location."
+      );
+    }
 
     if (!serviceAccount.project_id) {
       throw new Error("Invalid service account configuration");

@@ -64,19 +64,35 @@ export function InstanceStatus({
 
     const handleHibernate = async () => {
         try {
+            // Get the current user's ID token
+            const idToken = await auth.currentUser?.getIdToken();
+            if (!idToken) {
+                throw new Error('User not authenticated');
+            }
+
+            const projectId = process.env.NEXT_PUBLIC_GCP_PROJECT_ID;
+            if (!projectId) {
+                throw new Error('GCP Project ID not configured');
+            }
+
+            console.log('Stopping instance with params:', { instanceId, zone, projectId });
+
             const response = await fetch(`/api/instances/stop`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}`
                 },
                 body: JSON.stringify({
                     instanceId,
                     zone,
+                    projectId,
                 }),
             });
             
             if (!response.ok) {
-                throw new Error('Failed to stop instance');
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to stop instance');
             }
             
             // Show success notification
@@ -89,7 +105,7 @@ export function InstanceStatus({
         } catch (error) {
             console.error('Error stopping instance:', error);
             if (onError) {
-                onError('Failed to stop instance. Please try again.');
+                onError(error instanceof Error ? error.message : 'Failed to stop instance. Please try again.');
             }
         }
     };
